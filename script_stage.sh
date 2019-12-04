@@ -60,10 +60,6 @@ for subject in "$PATH2DATA"/*; do
 	id=${subject#"$PATH2DATA/"}
 	PATH2RES="$subject/results"
 	rfMRI=$id_
-	echo "this is id"
-	echo $id
-	echo "this is subject"
-	echo $subject
 	mkdir $subject/results
 
 	#saving the path for each file that will be used
@@ -71,35 +67,47 @@ for subject in "$PATH2DATA"/*; do
 	rfMRI_REST1_LR_SBRef="$subject/${id}_3T_rfMRI_REST1_preproc/$id/MNINonLinear/Results/rfMRI_REST1_LR/rfMRI_REST1_LR_SBRef.nii.gz"
 	SBRef_dc="$subject/${id}_3T_rfMRI_REST1_preproc/$id/MNINonLinear/Results/rfMRI_REST1_LR/SBRef_dc.nii.gz"
 	T1w_acpc_dc_restore="$subject/${id}_3T_Structural_preproc/$id/T1w/T1w_acpc_dc_restore.nii.gz"
-	rfMRI_REST1_LR_SBRef="$subject/${id}_3T_rfMRI_REST1_preproc/$id/MNINonLinear/Results/rfMRI_REST1_LR"
 
 	#brain extraction
 
 	#these images contain whole head, I need to extract the brain for next operations (epi_reg, applyXFM)
-	printf "\nbet $SBRef_dc $subject/results/SBRef_dc_brain.nii.gz -R -f 0.65\n"
+	printf "\nbet $SBRef_dc $PATH2RES/SBRef_dc_brain.nii.gz -R -f 0.65\n"
+	# for each bet, after som trials, I selected the best -f value
 	bet $SBRef_dc $PATH2RES/SBRef_dc_brain.nii.gz -R -f 0.65
-	printf "\nbet $SBRef_dc_T1w $subject/results/SBRef_dc_T1w_brain.nii.gz -R -f 0.5\n"
+	printf "\nbet $SBRef_dc_T1w $PATH2RES/SBRef_dc_T1w_brain.nii.gz -R -f 0.5\n"
 	bet $SBRef_dc_T1w $PATH2RES/SBRef_dc_T1w_brain.nii.gz -R -f 0.5
-	printf "\nbet $T1w_acpc_dc_restore $subject/results/T1w_acpc_dc_restore_brain.nii.gz -R -f 0.2\n"
+	printf "\nbet $T1w_acpc_dc_restore $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz -R -f 0.2\n"
 	bet $T1w_acpc_dc_restore $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz -R -f 0.2
 
 	#flirt
-	printf "flirt -in $subject/results/SBRef_dc_brain.nii.gz -ref $subject/results/SBRef_dc_T1w_brain.nii.gz -out $subject/results/flirt -omat $subject/results/flirt.mat -bins 256 -cost normmi -searchrx 0 0 -searchry 0 0 -searchrz 0 0 -dof 12  -interp trilinear\n"
+	#phase one: I want to match the SBRef file from fmri (res=2mm) with the one from sructural space (res=0.7mm)
+	#parameters: 12 dof, images: already virtually aligned, cost function: normalized mutual information
+	#
+	printf "\nflirt -in $PATH2RES/SBRef_dc_brain.nii.gz -ref $PATH2RES/SBRef_dc_T1w_brain.nii.gz -out $PATH2RES/flirt -omat $PATH2RES/flirt.mat -bins 256 -cost normmi -searchrx 0 0 -searchry 0 0 -searchrz 0 0 -dof 12  -interp trilinear\n"
 	flirt -in $PATH2RES/SBRef_dc_brain.nii.gz -ref $PATH2RES/SBRef_dc_T1w_brain.nii.gz -out $PATH2RES/flirt -omat $PATH2RES/flirt.mat -bins 256 -cost normmi -searchrx 0 0 -searchry 0 0 -searchrz 0 0 -dof 12  -interp trilinear
 
 	#epi_reg
-	printf "\nepi_reg --epi=$subject/results/SBRef_dc_T1w_brain.nii.gz --t1=$T1w_acpc_dc_restore --t1brain=$subject/results/T1w_acpc_dc_restore_brain.nii.gz --out=$subject/results/epi2struct\n"
+	#phase two: I want to 
+	printf "\nepi_reg --epi=$PATH2RES/SBRef_dc_T1w_brain.nii.gz --t1=$T1w_acpc_dc_restore --t1brain=$PATH2RES/T1w_acpc_dc_restore_brain.nii.gz --out=$PATH2RES/epi2struct\n"
 	epi_reg --epi=$PATH2RES/SBRef_dc_T1w_brain.nii.gz --t1=$T1w_acpc_dc_restore --t1brain=$PATH2RES/T1w_acpc_dc_restore_brain.nii.gz --out=$PATH2RES/epi2struct
 
 	#Concatxfm
-	printf "convert_xfm -omat $PATH2DATA/epi_reg2flirt.mat -concat $PATH2DATA/flirt.mat $PATH2DATA/epi2struct.mat\n"
-	convert_xfm -omat $PATH2RES/epi_reg2flirt.mat -concat $PATH2RES/epi2struct.mat $PATH2RES/flirt.mat 
+	printf "\nconvert_xfm -omat $PATH2RES/finalMatrix.mat -concat $PATH2RES/epi2struct.mat $PATH2RES/flirt.mat \n"
+	convert_xfm -omat $PATH2RES/finalMatrix.mat -concat $PATH2RES/epi2struct.mat $PATH2RES/flirt.mat 
 
 	#metti questa, sopra ho scambiato e dovrebbe essere giusto, controlla x sicurezza
 	#convert_xfm -omat finedef -concat /home/francescozumo/Desktop/working_folder/epi2struct.mat /home/francescozumo/Desktop/working_folder/flirt.mat
 
 	#ApplyXFM
 	#contrplla senza percorso assoluto
-	printf "flirt -in $subject/results/rfMRI_REST1_LR_SBRef.nii.gz -applyxfm -init $subject/results/epi_reg2flirt.mat -out $subject/results/applyXFM_out -paddingsize 0.0 -interp trilinear -ref $PATH2DATA/T1w_acpc_dc_restore_brain.nii.gz"
-	flirt -in $rfMRI_REST1_LR_SBRef -applyxfm -init $PATH2RES/epi_reg2flirt.mat -out $PATH2RES/applyXFM_out -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
+	printf "\nflirt -in $rfMRI_REST1_LR_SBRef -applyxfm -init $PATH2RES/finalMatrix.mat -out $PATH2RES/rfMRI_REST1_LR_SBRef_matApplied -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz\n"
+	flirt -in $rfMRI_REST1_LR_SBRef -applyxfm -init $PATH2RES/finalMatrix.mat -out $PATH2RES/rfMRI_REST1_LR_SBRef_matApplied -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
+
+	#da aggiungere
+	#fast T1w_acpc_dc_restore_brain.nii.gz
+
+	#convert_xfm -omat $PATH2RES/inverseMatrix.mat -inverse $PATH2RES/finalMatrix.mat
+
+	
+
 done
