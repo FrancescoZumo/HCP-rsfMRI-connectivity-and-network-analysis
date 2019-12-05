@@ -16,7 +16,6 @@ Optional arguments
 \tEnable interactive mode: you can choose which sections will be launched\n
 "
 }
-
 question (){
 	read -p "$1 [Y/n] " answer
 	case $answer in
@@ -88,7 +87,12 @@ if [[ "$flag" == true ]]; then
 	#creating a folder for each subject
 	for entry in "$PATH2DATA"/*; do
 		entry=${entry#"$PATH2DATA/"}
-		#check if entry's folder is already set up
+		if [[ !("$entry" == ??????*) ]]; then
+			echo "vediam se te sgam $entry"
+			continue
+		fi
+
+		#check if entry's folder is already set up (but just checks the length)
 		if [[ !("$entry" == ??????) ]]; then
 			current=${entry:0:6}
 			# here I assume that the for cycle orders entries by name, 
