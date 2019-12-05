@@ -17,10 +17,27 @@ Optional arguments
 "
 }
 
+question (){
+	read -p "$1 [Y/n] " answer
+	case $answer in
+	[Yy] | [Yy][Ee][Ss] )
+		flag=true
+		;;
+	[Nn] | [Nn][Oo])
+		flag=false
+		;;
+	* )
+		echo "Invalid answer, Abort"
+		exit
+		;;
+	esac
+}
+
 #Default path to HCP data 
 PATH2DATA="../Data"
 #will be set true if -i argument is used
 interactive=false
+
 #default value, so every section is executed
 flag=true
 
@@ -49,79 +66,52 @@ done
 
 #INTERACTIVE : path to Data
 if [[ "$interactive" == true ]]; then
-	read -p "current path to Data: $PATH2DATA, 
-would you like to change it? [Y/n] " answer
-	case $answer in
-	[Yy] | [Yy][Ee][Ss] )
-		read -p "new path: " PATH2DATA
-		;;
-	[Nn] | [Nn][Oo])
-		echo "path confirmed"
-		;;
-	* )
-		echo "Invalid answer, Abort"
-		exit
-		;;
-	esac
+	question "current path to Data: $PATH2DATA, 
+would you like to change it?"
+fi
+
+if [[ "$flag" == true ]]; then
+	read -p "new path: " PATH2DATA
+else
+	echo "path confirmed"
 fi
 
 #INTERACTIVE : setting up Data folder
 if [[ "$interactive" == true ]]; then
-	read -p "should I set up Data folder? [Y/n] " answer
-	case $answer in
-	[Yy] | [Yy][Ee][Ss] )
-		echo "confirmed"
-		flag=true
-		;;
-	[Nn] | [Nn][Oo])
-		echo "declined"
-		flag=false
-		;;
-	* )
-		echo "Invalid answer, Abort"
-		exit
-		;;
-	esac
+	question "should I set up Data folder?"
 fi
 
 if [[ "$flag" == true ]]; then
 	#variable for storing the previous and the current subject checked
 	current=""
 	prev=""
-
 	#creating a folder for each subject
 	for entry in "$PATH2DATA"/*; do
 		entry=${entry#"$PATH2DATA/"}
-		current=${entry:0:6}
-		# here I assume that the for cycle orders entries by name, 
-		# so I will always get folders from the same subject consecutively
-		if [[ $current != $prev ]]; then
-			# I store a new subject only if the previous is different
-			mkdir $PATH2DATA/$current
+		#check if entry's folder is already set up
+		if [[ !("$entry" == ??????) ]]; then
+			current=${entry:0:6}
+			# here I assume that the for cycle orders entries by name, 
+			# so I will always get folders from the same subject consecutively
+			if [[ $current != $prev ]]; then
+				# I store a new subject only if the previous is different
+				mkdir $PATH2DATA/$current
+			fi
+			mv $PATH2DATA/$entry $PATH2DATA/$current
+			prev=$current
 		fi
-		mv $PATH2DATA/$entry $PATH2DATA/$current
-		prev=$current
 	done
 fi
 
-
 #INTERACTIVE : execute code for only one subject
 if [[ "$interactive" == true ]]; then
-	read -p "should I execute code for only one subject? [Y/n] " answer
-	case $answer in
-	[Yy] | [Yy][Ee][Ss] )
-		echo "confirmed"
-		oneshot=true
-		;;
-	[Nn] | [Nn][Oo])
-		echo "declined"
-		oneshot=false
-		;;
-	* )
-		echo "Invalid answer, Abort"
-		exit
-		;;
-	esac
+	question "should I execute code for only one subject?"
+fi
+
+if [[ "$flag" == true ]]; then
+	oneshot=true
+else
+	oneshot=false
 fi
 
 #commenta molto tutto il codice, spiega parametri scelti x ogni comando e perché lo stai facendo
@@ -129,6 +119,11 @@ fi
 #repeating all processing for each subject found in Data folder
 for subject in "$PATH2DATA"/*; do
 	id=${subject#"$PATH2DATA/"}
+	#check if subject already has results
+	if [[ -d "$subject/results" ]]; then
+		echo "${id}'s data has been already processed"
+		continue
+	fi
 	PATH2RES="$subject/results"
 	rfMRI=$id_
 	mkdir -p $subject/results
@@ -142,21 +137,7 @@ for subject in "$PATH2DATA"/*; do
 
 	#INTERACTIVE : First section
 	if [[ "$interactive" == true ]]; then
-		read -p "start first section? [Y/n] " answer
-		case $answer in
-		[Yy] | [Yy][Ee][Ss] )
-			echo "confirmed"
-			flag=true
-			;;
-		[Nn] | [Nn][Oo])
-			echo "declined"
-			flag=false
-			;;
-		* )
-			echo "Invalid answer, Abort"
-			exit
-			;;
-		esac
+		question "start first section?"
 	fi
 
 	if [[ "$flag" == true ]]; then
@@ -205,28 +186,12 @@ for subject in "$PATH2DATA"/*; do
 		#Apply to rfMRI_REST1_LR_1180.nii.gz
 		#printf "\nflirt -in $PATH2RES/rfMRI_REST1_LR_1180.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_1180_matApplied.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz\n"
 		#flirt -in $PATH2RES/rfMRI_REST1_LR_1180.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_1180_matApplied.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
-		
-
 
 	fi
 
 	#INTERACTIVE : Second section
 	if [[ "$interactive" == true ]]; then
-		read -p "start second section? [Y/n] " answer
-		case $answer in
-		[Yy] | [Yy][Ee][Ss] )
-			echo "confirmed"
-			flag=true
-			;;
-		[Nn] | [Nn][Oo])
-			echo "declined"
-			flag=false
-			;;
-		* )
-			echo "Invalid answer, Abort"
-			exit
-			;;
-		esac
+		question "start second section?"
 	fi
 
 	if [[ "$flag" == true ]]; then
@@ -237,28 +202,28 @@ for subject in "$PATH2DATA"/*; do
 
 		#convert_xfm
 		#description
-		printf "\nconvert_xfm -omat $PATH2RES/T1w072fmri.mat -inverse $PATH2RES/fmri2T1w_07.mat\n"
-		convert_xfm -omat $PATH2RES/T1w072fmri.mat -inverse $PATH2RES/fmri2T1w_07.mat
+		printf "\nconvert_xfm -omat $PATH2RES/T1w207fmri.mat -inverse $PATH2RES/fmri2T1w_07.mat\n"
+		convert_xfm -omat $PATH2RES/T1w207fmri.mat -inverse $PATH2RES/fmri2T1w_07.mat
 
 		#mat applied to T1w_brain
 		#description
-		printf "\nflirt -in $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz -applyxfm -init $PATH2RES/T1w072fmri.mat -out $PATH2RES/T1w_brain2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz\n"
-		flirt -in $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz -applyxfm -init $PATH2RES/T1w072fmri.mat -out $PATH2RES/T1w_brain2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz
+		printf "\nflirt -in $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz -applyxfm -init $PATH2RES/T1w207fmri.mat -out $PATH2RES/T1w_brain2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz\n"
+		flirt -in $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz -applyxfm -init $PATH2RES/T1w207fmri.mat -out $PATH2RES/T1w_brain2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz
 
 		#apply inverse mat to PVE_0 : CSF
 		#description
-		printf "\nflirt -in $PATH2RES/T1w_acpc_dc_restore_brain_pve_0.nii.gz -applyxfm -init $PATH2RES/T1w072fmri.mat -out $PATH2RES/CSF2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz\n"
-		flirt -in $PATH2RES/T1w_acpc_dc_restore_brain_pve_0.nii.gz -applyxfm -init $PATH2RES/T1w072fmri.mat -out $PATH2RES/CSF2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz
+		printf "\nflirt -in $PATH2RES/T1w_acpc_dc_restore_brain_pve_0.nii.gz -applyxfm -init $PATH2RES/T1w207fmri.mat -out $PATH2RES/CSF2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz\n"
+		flirt -in $PATH2RES/T1w_acpc_dc_restore_brain_pve_0.nii.gz -applyxfm -init $PATH2RES/T1w207fmri.mat -out $PATH2RES/CSF2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz
 		
 		#apply inverse mat to pve_1 : GM
 		#description
-		printf "\nflirt -in $PATH2RES/T1w_acpc_dc_restore_brain_pve_1.nii.gz -applyxfm -init $PATH2RES/T1w072fmri.mat -out $PATH2RES/GM2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz\n"
-		flirt -in $PATH2RES/T1w_acpc_dc_restore_brain_pve_1.nii.gz -applyxfm -init $PATH2RES/T1w072fmri.mat -out $PATH2RES/GM2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz
+		printf "\nflirt -in $PATH2RES/T1w_acpc_dc_restore_brain_pve_1.nii.gz -applyxfm -init $PATH2RES/T1w207fmri.mat -out $PATH2RES/GM2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz\n"
+		flirt -in $PATH2RES/T1w_acpc_dc_restore_brain_pve_1.nii.gz -applyxfm -init $PATH2RES/T1w207fmri.mat -out $PATH2RES/GM2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz
 
 		#apply inverse mat to pve_2 : WM
 		#description
-		printf "\nflirt -in $PATH2RES/T1w_acpc_dc_restore_brain_pve_2.nii.gz -applyxfm -init $PATH2RES/T1w072fmri.mat -out $PATH2RES/WM2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz\n"
-		flirt -in $PATH2RES/T1w_acpc_dc_restore_brain_pve_2.nii.gz -applyxfm -init $PATH2RES/T1w072fmri.mat -out $PATH2RES/WM2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz
+		printf "\nflirt -in $PATH2RES/T1w_acpc_dc_restore_brain_pve_2.nii.gz -applyxfm -init $PATH2RES/T1w207fmri.mat -out $PATH2RES/WM2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz\n"
+		flirt -in $PATH2RES/T1w_acpc_dc_restore_brain_pve_2.nii.gz -applyxfm -init $PATH2RES/T1w207fmri.mat -out $PATH2RES/WM2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz
 
 		#fslmath pve_0
 		#description
