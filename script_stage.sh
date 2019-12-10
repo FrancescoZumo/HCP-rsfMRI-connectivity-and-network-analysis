@@ -66,13 +66,11 @@ done
 #INTERACTIVE : path to Data
 if [[ "$interactive" == true ]]; then
 	question "current path to Data: $PATH2DATA, 
-would you like to change it?"
+is it ok?"
 fi
 
-if [[ "$flag" == true ]]; then
+if [[ "$flag" == false ]]; then
 	read -p "new path: " PATH2DATA
-else
-	echo "path confirmed"
 fi
 
 #INTERACTIVE : setting up Data folder
@@ -87,13 +85,14 @@ if [[ "$flag" == true ]]; then
 	#creating a folder for each subject
 	for entry in "$PATH2DATA"/*; do
 		entry=${entry#"$PATH2DATA/"}
-		if [[ !("$entry" == ??????*) ]]; then
-			echo "vediam se te sgam $entry"
+		#only 6 digit numbers and files with specified suffix are considered
+		if ! [[ ("$entry" == ?????? && "$entry" =~ ^[0-9]+$) || "$entry" == *_3T_rfMRI_REST1_preproc || "$entry" == *_3T_Structural_preproc ]]; then
+			echo "$entry ignored"
 			continue
 		fi
 
-		#check if entry's folder is already set up (but just checks the length)
-		if [[ !("$entry" == ??????) ]]; then
+		#check if entry's folder is already set up (just checks the length)
+		if ! [[ "$entry" == ?????? ]]; then
 			current=${entry:0:6}
 			# here I assume that the for cycle orders entries by name, 
 			# so I will always get folders from the same subject consecutively
@@ -109,13 +108,13 @@ fi
 
 #INTERACTIVE : execute code for only one subject
 if [[ "$interactive" == true ]]; then
-	question "should I execute code for only one subject?"
+	question "should I execute code for all subjects?"
 fi
 
 if [[ "$flag" == true ]]; then
-	oneshot=true
+	repeat=true
 else
-	oneshot=false
+	repeat=false
 fi
 
 #commenta molto tutto il codice, spiega parametri scelti x ogni comando e perché lo stai facendo
@@ -123,8 +122,14 @@ fi
 #repeating all processing for each subject found in Data folder
 for subject in "$PATH2DATA"/*; do
 	id=${subject#"$PATH2DATA/"}
+
+	#ignore ther files
+	if ! [[ "$id" == ?????? && "$id" =~ ^[0-9]+$ ]]; then
+		continue
+	fi
+
 	#check if subject already has results
-	if [[ -d "$subject/results" ]]; then
+	if [[ -d "$subject/results" && "$interactive" == false ]]; then
 		echo "${id}'s data has been already processed"
 		continue
 	fi
@@ -132,16 +137,19 @@ for subject in "$PATH2DATA"/*; do
 	rfMRI=$id_
 	mkdir -p $subject/results
 
+	#if SIGINT or SIGTERM is received, results folder is removed before exiting
+	trap "mv -f $subject/results $subject/interrupted$$; echo ' pipeline interrupted, results name changed in interrupted$$'; exit" SIGINT SIGTERM
+
 	#saving the path for each file that will be used
 	SBRef_dc_T1w="$subject/${id}_3T_rfMRI_REST1_preproc/$id/T1w/Results/rfMRI_REST1_LR/SBRef_dc.nii.gz"
 	rfMRI_REST1_LR_SBRef="$subject/${id}_3T_rfMRI_REST1_preproc/$id/MNINonLinear/Results/rfMRI_REST1_LR/rfMRI_REST1_LR_SBRef.nii.gz"
 	SBRef_dc="$subject/${id}_3T_rfMRI_REST1_preproc/$id/MNINonLinear/Results/rfMRI_REST1_LR/SBRef_dc.nii.gz"
 	T1w_acpc_dc_restore="$subject/${id}_3T_Structural_preproc/$id/T1w/T1w_acpc_dc_restore.nii.gz"
-	rfMRI_REST1_LR="$subject/${id}_3T_rfMRI_REST1_preproc/102614/MNINonLinear/Results/rfMRI_REST1_LR/rfMRI_REST1_LR.nii.gz"
+	rfMRI_REST1_LR="$subject/${id}_3T_rfMRI_REST1_preproc/$id/MNINonLinear/Results/rfMRI_REST1_LR/rfMRI_REST1_LR.nii.gz"
 
 	#INTERACTIVE : First section
 	if [[ "$interactive" == true ]]; then
-		question "start first section?"
+		question "$id : start first section?"
 	fi
 
 	if [[ "$flag" == true ]]; then
@@ -149,7 +157,13 @@ for subject in "$PATH2DATA"/*; do
 		#fslroi
 		#explanation
 		printf "\nfslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_1180.nii.gz 20 -1\n"
-		fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_1180.nii.gz 20 -1
+		#fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_1180.nii.gz 20 -1
+
+		fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part1.nii.gz 20 295
+		fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part2.nii.gz 315 295
+		fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part3.nii.gz 610 295
+		fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part4.nii.gz 905 295
+		fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part1.nii.gz $PATH2RES/rfMRI_REST1_LR_part2.nii.gz $PATH2RES/rfMRI_REST1_LR_part3.nii.gz $PATH2RES/rfMRI_REST1_LR_part4.nii.gz
 
 		#brain extraction
 		#these images contain whole head, I need to extract the brain for next operations (epi_reg, applyXFM)
@@ -177,25 +191,28 @@ for subject in "$PATH2DATA"/*; do
 		printf "\nconvert_xfm -omat $PATH2RES/fmri2T1w_07.mat -concat $PATH2RES/epi2struct.mat $PATH2RES/flirt.mat \n"
 		convert_xfm -omat $PATH2RES/fmri2T1w_07.mat -concat $PATH2RES/epi2struct.mat $PATH2RES/flirt.mat 
 
-		#metti questa, sopra ho scambiato e dovrebbe essere giusto, controlla x sicurezza
-		#convert_xfm -omat finedef -concat /home/francescozumo/Desktop/working_folder/epi2struct.mat /home/francescozumo/Desktop/working_folder/flirt.mat
-
 		#ApplyXFM
 		printf "\nflirt -in $rfMRI_REST1_LR_SBRef -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_SBRef_matApplied -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz\n"
-		flirt -in $rfMRI_REST1_LR_SBRef -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_SBRef_matApplied -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
-
+		flirt -in $rfMRI_REST1_LR_SBRef -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_SBRef_fmri2T1w -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
 
 		#viene ucciso!
 
 		#Apply to rfMRI_REST1_LR_1180.nii.gz
+		
 		#printf "\nflirt -in $PATH2RES/rfMRI_REST1_LR_1180.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_1180_matApplied.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz\n"
-		#flirt -in $PATH2RES/rfMRI_REST1_LR_1180.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_1180_matApplied.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
+		#flirt -in $PATH2RES/rfMRI_REST1_LR_part1.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/1180_fmri2T1w_part1.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
+		#flirt -in $PATH2RES/rfMRI_REST1_LR_part2.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/1180_fmri2T1w_part2.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
+		#flirt -in $PATH2RES/rfMRI_REST1_LR_part3.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/1180_fmri2T1w_part3.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
+		#flirt -in $PATH2RES/rfMRI_REST1_LR_part4.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/1180_fmri2T1w_part4.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
+		#fslmerge -t $PATH2RES/1180_fmri2T1w.nii.gz $PATH2RES/1180_fmri2T1w_part1.nii.gz $PATH2RES/1180_fmri2T1w_part2.nii.gz $PATH2RES/1180_fmri2T1w_part3.nii.gz $PATH2RES/1180_fmri2T1w_part4.nii.gz
+		
+		#rm $PATH2RES/1180_fmri2T1w_part1.nii.gz $PATH2RES/1180_fmri2T1w_part2.nii.gz $PATH2RES/1180_fmri2T1w_part3.nii.gz $PATH2RES/1180_fmri2T1w_part4.nii.gz
 
 	fi
 
 	#INTERACTIVE : Second section
 	if [[ "$interactive" == true ]]; then
-		question "start second section?"
+		question "$id : start second section?"
 	fi
 
 	if [[ "$flag" == true ]]; then
@@ -254,11 +271,31 @@ for subject in "$PATH2DATA"/*; do
 		#fslmeants pve_2
 		printf "\nfslmeants -i $PATH2RES/rfMRI_REST1_LR_1180.nii.gz -o $PATH2RES/meants_pve_0.txt -m $PATH2RES/WM2fmri_mask.nii.gz\n"
 		fslmeants -i $PATH2RES/rfMRI_REST1_LR_1180.nii.gz -o $PATH2RES/WM_meansignal.txt -m $PATH2RES/WM2fmri_mask.nii.gz
+
+
 	fi
 
-	if [[ "$oneshot" == true ]]; then
-		echo "pileline concluded only for $id, exiting"
-		exit
+	#INTERACTIVE : Third section
+	if [[ "$interactive" == true ]]; then
+		question "$id : start third section?"
+	fi
+
+	if [[ "$flag" == true ]]; then
+		#remove first 20 lines from Movement_Regressors.txt
+		sed '1,20d' "$subject/${id}_3T_rfMRI_REST1_preproc/$id/MNINonLinear/Results/rfMRI_REST1_LR/Movement_Regressors.txt" > $PATH2RES/Movement_Regressors_1180.txt
+	
+
+	fi
+
+	#remove partial files remained
+	#rm $PATH2RES/rfMRI_REST1_LR_part1.nii.gz $PATH2RES/rfMRI_REST1_LR_part2.nii.gz $PATH2RES/rfMRI_REST1_LR_part3.nii.gz $PATH2RES/rfMRI_REST1_LR_part4.nii.gz
+
+	#when interactive, ask if continue or exit
+	if [[ "$repeat" == false ]]; then
+		question "subject $id completed, do you want to continue with next subject?"
+		if [[ "$flag" == false  ]]; then
+			exit
+		fi
 	fi
 
 done
