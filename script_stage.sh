@@ -2,19 +2,19 @@
 
 #keep it updated!
 usage (){
-	printf "\nUsage: script
+	printf "\nUsage: ./script [options]
 
 Optional arguments
 
--p, --path
-\tSet a different path to data\n
+ -p <path>, --path <path>\t: set a different path to data
 
--h, --help
-\tShows usage\n
+ -l <value>, --length <value>\t: change the length of 4D partial files (how many volumes per file). Try to decrease this value if some operations are too expensive for your pc
 
--i --interactive
-\tEnable interactive mode: you can choose which sections will be launched\n
-"
+ -h, --help\t\t\t: display this page
+
+ -i, --interactive\t\t: enable interactive mode: choose which sections will be launched and see all available settings
+
+ -o, --one_subject\t\t: only one subject is processed\n"
 }
 question (){
 	read -p "$1 [Y/n] " answer
@@ -37,6 +37,12 @@ PATH2DATA="../Data"
 #will be set true if -i argument is used
 interactive=false
 
+#if == false, only one subject will be processed
+repeat=true
+
+#length of rfMRI parts
+L=20
+
 #default value, so every section is executed
 flag=true
 
@@ -54,6 +60,13 @@ while [[ "$1" != "" ]]; do
 		-i | --interactive )
 			interactive=true
 			echo "<interactive mode enabled>"
+			;;
+		-l | --length )
+			shift
+			L=$1
+			;;
+		-o | --one_subject )
+			repeat=false
 			;;
 		* )
 			echo "Unknown option, Abort"
@@ -106,12 +119,22 @@ if [[ "$flag" == true ]]; then
 	done
 fi
 
+#INTERACTIVE : length
+if [[ "$interactive" == true ]]; then
+	question "do you want to change the length of partial files (current = $L)?"
+fi
+
+if [[ "$flag" == true && "$interactive" == true ]]; then
+	read -p "new value: " ans
+	L=$ans
+fi
+
 #INTERACTIVE : execute code for only one subject
 if [[ "$interactive" == true ]]; then
 	question "should I execute code for all subjects?"
 fi
 
-if [[ "$flag" == true ]]; then
+if [[ "$flag" == true && "$repeat" == true ]]; then
 	repeat=true
 else
 	repeat=false
@@ -137,7 +160,7 @@ for subject in "$PATH2DATA"/*; do
 	rfMRI=$id_
 	mkdir -p $subject/results
 
-	#if SIGINT or SIGTERM is received, results folder is removed before exiting
+	#if SIGINT or SIGTERM is received, results folder is renamed before exiting
 	trap "mv -f $subject/results $subject/interrupted$$; echo ' pipeline interrupted, results name changed in interrupted$$'; exit" SIGINT SIGTERM
 
 	#saving the path for each file that will be used
@@ -152,18 +175,44 @@ for subject in "$PATH2DATA"/*; do
 		question "$id : start first section?"
 	fi
 
+	#string for storing rfMRI parts, so they can be removed at the end of the pipeline
+	parts=""
 	if [[ "$flag" == true ]]; then
 
 		#fslroi
 		#explanation
-		printf "\nfslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_1180.nii.gz 20 -1\n"
 		#fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_1180.nii.gz 20 -1
+		printf "\nfslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_1180.nii.gz 20 -1 (divided in $((($limit - 20 + $L - 1)/$L)) parts, then merge)\n"
+		
+		limit=100
+		for (( i = 1; $(($L*$i)) < $limit; i++ )); do
+			echo "fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz $((20 + $L*$i - $L)) $L"
+			fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz $((20 + $L*$i - $L)) $L
+			parts="${parts}$PATH2RES/rfMRI_REST1_LR_part$i.nii.gz "
+			if [[ $i == 1 ]]; then
+				fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz
+			else
+				fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz
+			fi
 
-		fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part1.nii.gz 20 295
-		fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part2.nii.gz 315 295
-		fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part3.nii.gz 610 295
-		fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part4.nii.gz 905 295
-		fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part1.nii.gz $PATH2RES/rfMRI_REST1_LR_part2.nii.gz $PATH2RES/rfMRI_REST1_LR_part3.nii.gz $PATH2RES/rfMRI_REST1_LR_part4.nii.gz
+			#only if L doesn't divide 1180 
+			if [[ $(($L + $L*$i)) -gt $limit ]]; then
+				echo "exception"
+				((i++))
+				echo "fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz $((20 + $L*$i - $L)) $(($limit - (20 + $L*$i - $L) ))"
+				fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz $((20 + $L*$i - $L)) $(($limit - (20 + $L*$i - $L) ))
+				parts="${parts}$PATH2RES/rfMRI_REST1_LR_part$i.nii.gz "
+				if [[ $i == 1 ]]; then
+					fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz
+				else
+					fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz
+				fi
+				break
+			fi
+		done
+		#merge all pieces
+		#printf "fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $parts\n"
+		#fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $parts
 
 		#brain extraction
 		#these images contain whole head, I need to extract the brain for next operations (epi_reg, applyXFM)
@@ -195,19 +244,37 @@ for subject in "$PATH2DATA"/*; do
 		printf "\nflirt -in $rfMRI_REST1_LR_SBRef -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_SBRef_matApplied -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz\n"
 		flirt -in $rfMRI_REST1_LR_SBRef -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_SBRef_fmri2T1w -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
 
-		#viene ucciso!
+	fi
 
+	#INTERACTIVE : difficult section
+	if [[ "$interactive" == true ]]; then
+		question "$id : start dead section?"
+	fi
+
+	if [[ "$flag" == true ]]; then
 		#Apply to rfMRI_REST1_LR_1180.nii.gz
-		
-		#printf "\nflirt -in $PATH2RES/rfMRI_REST1_LR_1180.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_1180_matApplied.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz\n"
-		#flirt -in $PATH2RES/rfMRI_REST1_LR_part1.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/1180_fmri2T1w_part1.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
-		#flirt -in $PATH2RES/rfMRI_REST1_LR_part2.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/1180_fmri2T1w_part2.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
-		#flirt -in $PATH2RES/rfMRI_REST1_LR_part3.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/1180_fmri2T1w_part3.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
-		#flirt -in $PATH2RES/rfMRI_REST1_LR_part4.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/1180_fmri2T1w_part4.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
-		#fslmerge -t $PATH2RES/1180_fmri2T1w.nii.gz $PATH2RES/1180_fmri2T1w_part1.nii.gz $PATH2RES/1180_fmri2T1w_part2.nii.gz $PATH2RES/1180_fmri2T1w_part3.nii.gz $PATH2RES/1180_fmri2T1w_part4.nii.gz
-		
-		#rm $PATH2RES/1180_fmri2T1w_part1.nii.gz $PATH2RES/1180_fmri2T1w_part2.nii.gz $PATH2RES/1180_fmri2T1w_part3.nii.gz $PATH2RES/1180_fmri2T1w_part4.nii.gz
+		#merge2=""
 
+		i=1
+		for part in $parts; do
+			echo "flirt n $i"
+			flirt -in $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_T1w_part$i.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
+			#merge2="${merge2}$PATH2RES/rfMRI_REST1_LR_T1w_part$(($i + 1)).nii.gz "
+			if [[ $i == 1 ]]; then
+				fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180_T1w.nii.gz $PATH2RES/rfMRI_REST1_LR_T1w_part$i.nii.gz
+			else
+				fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180_T1w.nii.gz $PATH2RES/rfMRI_REST1_LR_1180_T1w.nii.gz $PATH2RES/rfMRI_REST1_LR_T1w_part$i.nii.gz
+			fi
+			
+			rm $PATH2RES/rfMRI_REST1_LR_T1w_part$i.nii.gz
+			((i++))
+			#only if L doesn't divide 1180 
+		done
+		#merge all parts
+		#printf "fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180_T1w.nii.gz $merge2\n"
+		#fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180_T1w.nii.gz $merge2
+		#remove parts
+		#rm $merge2
 	fi
 
 	#INTERACTIVE : Second section
@@ -272,7 +339,6 @@ for subject in "$PATH2DATA"/*; do
 		printf "\nfslmeants -i $PATH2RES/rfMRI_REST1_LR_1180.nii.gz -o $PATH2RES/meants_pve_0.txt -m $PATH2RES/WM2fmri_mask.nii.gz\n"
 		fslmeants -i $PATH2RES/rfMRI_REST1_LR_1180.nii.gz -o $PATH2RES/WM_meansignal.txt -m $PATH2RES/WM2fmri_mask.nii.gz
 
-
 	fi
 
 	#INTERACTIVE : Third section
@@ -283,13 +349,11 @@ for subject in "$PATH2DATA"/*; do
 	if [[ "$flag" == true ]]; then
 		#remove first 20 lines from Movement_Regressors.txt
 		sed '1,20d' "$subject/${id}_3T_rfMRI_REST1_preproc/$id/MNINonLinear/Results/rfMRI_REST1_LR/Movement_Regressors.txt" > $PATH2RES/Movement_Regressors_1180.txt
-	
-
+		echo "add 2 columns CSF & WM, then Glm for linear regression"
 	fi
 
 	#remove partial files remained
-	#rm $PATH2RES/rfMRI_REST1_LR_part1.nii.gz $PATH2RES/rfMRI_REST1_LR_part2.nii.gz $PATH2RES/rfMRI_REST1_LR_part3.nii.gz $PATH2RES/rfMRI_REST1_LR_part4.nii.gz
-
+	rm $parts
 	#when interactive, ask if continue or exit
 	if [[ "$repeat" == false ]]; then
 		question "subject $id completed, do you want to continue with next subject?"
