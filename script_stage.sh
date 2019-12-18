@@ -8,7 +8,9 @@ Optional arguments
 
  -p <path>, --path <path>\t: set a different path to data
 
- -l <value>, --length <value>\t: change the length of 4D partial files (how many volumes per file). Try to decrease this value if some operations are too expensive for your pc
+ -l <value>, --length <value>\t: change the length of 4D partial files (how many volumes per file). Try to decrease this value if some operations are too expensive for your pc. default = $L
+
+ -v <value>, --volumes <value>\t: choose how many volumes you want to process (first 20 are discarded). default = $volumes
 
  -h, --help\t\t\t: display this page
 
@@ -41,7 +43,9 @@ interactive=false
 repeat=true
 
 #length of rfMRI parts
-L=20
+L=200
+#must be 1200, can be changed for tests
+volumes=1200
 
 #default value, so every section is executed
 flag=true
@@ -64,6 +68,10 @@ while [[ "$1" != "" ]]; do
 		-l | --length )
 			shift
 			L=$1
+			;;
+		-v | --volumes )
+			shift
+			volumes=$1
 			;;
 		-o | --one_subject )
 			repeat=false
@@ -100,7 +108,6 @@ if [[ "$flag" == true ]]; then
 		entry=${entry#"$PATH2DATA/"}
 		#only 6 digit numbers and files with specified suffix are considered
 		if ! [[ ("$entry" == ?????? && "$entry" =~ ^[0-9]+$) || "$entry" == *_3T_rfMRI_REST1_preproc || "$entry" == *_3T_Structural_preproc ]]; then
-			echo "$entry ignored"
 			continue
 		fi
 
@@ -127,6 +134,16 @@ fi
 if [[ "$flag" == true && "$interactive" == true ]]; then
 	read -p "new value: " ans
 	L=$ans
+fi
+
+#INTERACTIVE : volumes
+if [[ "$interactive" == true ]]; then
+	question "do you want to change the number of volumes processed? (first 20 are discarded, current = $volumes)?"
+fi
+
+if [[ "$flag" == true && "$interactive" == true ]]; then
+	read -p "new value: " ans
+	volumes=$ans
 fi
 
 #INTERACTIVE : execute code for only one subject
@@ -181,33 +198,21 @@ for subject in "$PATH2DATA"/*; do
 
 		#fslroi
 		#explanation
+		printf "\nfslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_1180.nii.gz 20 -1, result is divided in $((($volumes - 20 + $L - 1)/$L)) parts)\n"
 		#fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_1180.nii.gz 20 -1
-		printf "\nfslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_1180.nii.gz 20 -1 (divided in $((($limit - 20 + $L - 1)/$L)) parts, then merge)\n"
-		
-		limit=100
-		for (( i = 1; $(($L*$i)) < $limit; i++ )); do
-			echo "fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz $((20 + $L*$i - $L)) $L"
-			fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz $((20 + $L*$i - $L)) $L
+		for (( i = 1; $(($L*$i - $L + 20)) < $volumes; i++ )); do
+			#if remaining volumes are less then $L, a smaller part is created
+			ans=$(($volumes - (20 + $L*$i - $L) ))
+																								#check min between $L and remaining volumes
+			echo "fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz $((20 + $L*$i - $L)) $(( $ans < $L ? $ans : $L))"
+			fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz $((20 + $L*$i - $L)) $(( $ans < $L ? $ans : $L))
 			parts="${parts}$PATH2RES/rfMRI_REST1_LR_part$i.nii.gz "
 			if [[ $i == 1 ]]; then
+				echo "fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz"
 				fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz
 			else
+				echo "fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz"
 				fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz
-			fi
-
-			#only if L doesn't divide 1180 
-			if [[ $(($L + $L*$i)) -gt $limit ]]; then
-				echo "exception"
-				((i++))
-				echo "fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz $((20 + $L*$i - $L)) $(($limit - (20 + $L*$i - $L) ))"
-				fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz $((20 + $L*$i - $L)) $(($limit - (20 + $L*$i - $L) ))
-				parts="${parts}$PATH2RES/rfMRI_REST1_LR_part$i.nii.gz "
-				if [[ $i == 1 ]]; then
-					fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz
-				else
-					fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz
-				fi
-				break
 			fi
 		done
 		#merge all pieces
@@ -257,16 +262,18 @@ for subject in "$PATH2DATA"/*; do
 
 		i=1
 		for part in $parts; do
-			echo "flirt n $i"
+			echo "flirt -in $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_T1w_part$i.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz"
 			flirt -in $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_T1w_part$i.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
 			#merge2="${merge2}$PATH2RES/rfMRI_REST1_LR_T1w_part$(($i + 1)).nii.gz "
 			if [[ $i == 1 ]]; then
-				fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180_T1w.nii.gz $PATH2RES/rfMRI_REST1_LR_T1w_part$i.nii.gz
+				echo "fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180_T1w.nii.gz $PATH2RES/rfMRI_REST1_LR_T1w_part$i.nii.gz"
+				#fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180_T1w.nii.gz $PATH2RES/rfMRI_REST1_LR_T1w_part$i.nii.gz
 			else
-				fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180_T1w.nii.gz $PATH2RES/rfMRI_REST1_LR_1180_T1w.nii.gz $PATH2RES/rfMRI_REST1_LR_T1w_part$i.nii.gz
+				echo "fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180_T1w.nii.gz $PATH2RES/rfMRI_REST1_LR_1180_T1w.nii.gz $PATH2RES/rfMRI_REST1_LR_T1w_part$i.nii.gz"
+				#fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180_T1w.nii.gz $PATH2RES/rfMRI_REST1_LR_1180_T1w.nii.gz $PATH2RES/rfMRI_REST1_LR_T1w_part$i.nii.gz
 			fi
 			
-			rm $PATH2RES/rfMRI_REST1_LR_T1w_part$i.nii.gz
+			#rm $PATH2RES/rfMRI_REST1_LR_T1w_part$i.nii.gz
 			((i++))
 			#only if L doesn't divide 1180 
 		done
@@ -349,17 +356,55 @@ for subject in "$PATH2DATA"/*; do
 	if [[ "$flag" == true ]]; then
 		#remove first 20 lines from Movement_Regressors.txt
 		sed '1,20d' "$subject/${id}_3T_rfMRI_REST1_preproc/$id/MNINonLinear/Results/rfMRI_REST1_LR/Movement_Regressors.txt" > $PATH2RES/Movement_Regressors_1180.txt
-		echo "add 2 columns CSF & WM, then Glm for linear regression"
-	fi
+		#echo "add 2 columns CSF & WM, then Glm for linear regression"
+		#pr -mts"  " $PATH2RES/Movement_Regressors_1180.txt $PATH2RES/CSF_meansignal.txt $PATH2RES/WM_meansignal.txt > $PATH2RES/Mov_regressors_CSF_WM.txt
+		
 
-	#remove partial files remained
-	rm $parts
-	#when interactive, ask if continue or exit
-	if [[ "$repeat" == false ]]; then
-		question "subject $id completed, do you want to continue with next subject?"
-		if [[ "$flag" == false  ]]; then
-			exit
+		#create a file for each column (14 files), then create design (Glm) for linear regression (fsl_glm)
+
+
+		mkdir -p $PATH2RES/regressors
+		PATH2REG="$PATH2RES/regressors"
+
+
+		split -a 2 -x -l $L $PATH2RES/Movement_Regressors_1180.txt $PATH2REG/Movement_Regressors_part
+		split -a 2 -x -l $L $PATH2RES/CSF_meansignal.txt $PATH2REG/CSF_part
+		split -a 2 -x -l $L $PATH2RES/WM_meansignal.txt $PATH2REG/WM_part
+
+		i=0
+		for entry in "$PATH2REG"/Mov*; do
+			awk '{print $1}' $entry > $PATH2REG/part${i}_col1.txt
+			awk '{print $2}' $entry > $PATH2REG/part${i}_col2.txt
+			awk '{print $3}' $entry > $PATH2REG/part${i}_col3.txt
+			awk '{print $4}' $entry > $PATH2REG/part${i}_col4.txt
+			awk '{print $5}' $entry > $PATH2REG/part${i}_col5.txt
+			awk '{print $6}' $entry > $PATH2REG/part${i}_col6.txt
+			awk '{print $7}' $entry > $PATH2REG/part${i}_col7.txt
+			awk '{print $8}' $entry > $PATH2REG/part${i}_col8.txt
+			awk '{print $9}' $entry > $PATH2REG/part${i}_col9.txt
+			awk '{print $10}' $entry > $PATH2REG/part${i}_col10.txt
+			awk '{print $11}' $entry > $PATH2REG/part${i}_col11.txt
+			awk '{print $12}' $entry > $PATH2REG/part${i}_col12.txt
+			((i++))
+		done
+		
+
+		#Glm
+
+		#fsl_glm
+		fsl_glm -i $PATH2RES/rfMRI_REST1_LR_part1.nii.gz -d  $PATH2RES/design200.mat -o betas --out_res= $PATH2RES/rfMRI_REST1_LR_part1_reg.nii.gz
+
+
+
+		#remove partial files remained
+		#rm $parts
+		
+		#when interactive, ask if continue or exit
+		if [[ "$repeat" == false ]]; then
+			question "subject $id completed, do you want to continue with next subject?"
+			if [[ "$flag" == false  ]]; then
+				exit
+			fi
 		fi
 	fi
-
 done
