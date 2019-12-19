@@ -44,6 +44,7 @@ repeat=true
 
 #length of rfMRI parts
 L=200
+
 #must be 1200, can be changed for tests
 volumes=1200
 
@@ -189,7 +190,7 @@ for subject in "$PATH2DATA"/*; do
 
 	#INTERACTIVE : First section
 	if [[ "$interactive" == true ]]; then
-		question "$id : start first section?"
+		question "$id : start 1st section - creating frmi2T1W.mat ?"
 	fi
 
 	#string for storing rfMRI parts, so they can be removed at the end of the pipeline
@@ -221,8 +222,9 @@ for subject in "$PATH2DATA"/*; do
 
 		#brain extraction
 		#these images contain whole head, I need to extract the brain for next operations (epi_reg, applyXFM)
+
+		# for each bet, after som trials, I selected the best threshold -f value
 		printf "\nbet $SBRef_dc $PATH2RES/SBRef_dc_brain.nii.gz -R -f 0.65\n"
-		# for each bet, after som trials, I selected the best -f value
 		bet $SBRef_dc $PATH2RES/SBRef_dc_brain.nii.gz -R -f 0.65
 		printf "\nbet $SBRef_dc_T1w $PATH2RES/SBRef_dc_T1w_brain.nii.gz -R -f 0.5\n"
 		bet $SBRef_dc_T1w $PATH2RES/SBRef_dc_T1w_brain.nii.gz -R -f 0.5
@@ -232,28 +234,28 @@ for subject in "$PATH2DATA"/*; do
 		#flirt
 		#phase one: I want to match the SBRef file from fmri (res=2mm) with the one from sructural space (res=0.7mm)
 		#parameters: 12 dof, images: already virtually aligned, cost function: normalized mutual information
-		#
 		printf "\nflirt -in $PATH2RES/SBRef_dc_brain.nii.gz -ref $PATH2RES/SBRef_dc_T1w_brain.nii.gz -out $PATH2RES/flirt -omat $PATH2RES/flirt.mat -bins 256 -cost normmi -searchrx 0 0 -searchry 0 0 -searchrz 0 0 -dof 12  -interp trilinear\n"
 		flirt -in $PATH2RES/SBRef_dc_brain.nii.gz -ref $PATH2RES/SBRef_dc_T1w_brain.nii.gz -out $PATH2RES/flirt -omat $PATH2RES/flirt.mat -bins 256 -cost normmi -searchrx 0 0 -searchry 0 0 -searchrz 0 0 -dof 12  -interp trilinear
 
 		#epi_reg
-		#phase two: I want to 
+		#phase two: now I want to match SBRef (res=0.7mm) with T1w_acpc_dc_restore image. 
+		#I expect lower values since both images have the same resolution and are in the same space (T1w)
 		printf "\nepi_reg --epi=$PATH2RES/SBRef_dc_T1w_brain.nii.gz --t1=$T1w_acpc_dc_restore --t1brain=$PATH2RES/T1w_acpc_dc_restore_brain.nii.gz --out=$PATH2RES/epi2struct\n"
 		epi_reg --epi=$PATH2RES/SBRef_dc_T1w_brain.nii.gz --t1=$T1w_acpc_dc_restore --t1brain=$PATH2RES/T1w_acpc_dc_restore_brain.nii.gz --out=$PATH2RES/epi2struct
 
-		#Concatxfm
+		#Concatxfm - in order to obtain fmri2T1w.mat 
 		printf "\nconvert_xfm -omat $PATH2RES/fmri2T1w_07.mat -concat $PATH2RES/epi2struct.mat $PATH2RES/flirt.mat \n"
 		convert_xfm -omat $PATH2RES/fmri2T1w_07.mat -concat $PATH2RES/epi2struct.mat $PATH2RES/flirt.mat 
 
-		#ApplyXFM
+		#ApplyXFM - applying matrix to rfMRI_REST1_LR_SBRef_fmri2T1w
 		printf "\nflirt -in $rfMRI_REST1_LR_SBRef -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_SBRef_matApplied -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz\n"
 		flirt -in $rfMRI_REST1_LR_SBRef -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_SBRef_fmri2T1w -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
 
 	fi
 
-	#INTERACTIVE : difficult section
+	#INTERACTIVE : 2nd section
 	if [[ "$interactive" == true ]]; then
-		question "$id : start dead section?"
+		question "$id : start 2nd section - applying fmri2T1W.mat to rfMRI_REST1_LR_1180?"
 	fi
 
 	if [[ "$flag" == true ]]; then
@@ -286,7 +288,7 @@ for subject in "$PATH2DATA"/*; do
 
 	#INTERACTIVE : Second section
 	if [[ "$interactive" == true ]]; then
-		question "$id : start second section?"
+		question "$id : start 3rd section - obtaining CSF/WM/GM_meansignal?"
 	fi
 
 	if [[ "$flag" == true ]]; then
@@ -350,7 +352,7 @@ for subject in "$PATH2DATA"/*; do
 
 	#INTERACTIVE : Third section
 	if [[ "$interactive" == true ]]; then
-		question "$id : start third section?"
+		question "$id : start 4th section - linear regression?"
 	fi
 
 	if [[ "$flag" == true ]]; then
@@ -362,11 +364,11 @@ for subject in "$PATH2DATA"/*; do
 
 		#create a file for each column (14 files), then create design (Glm) for linear regression (fsl_glm)
 
-
+		#create folder for all *.txt regressors
 		mkdir -p $PATH2RES/regressors
 		PATH2REG="$PATH2RES/regressors"
 
-
+		#use split to divide regressors in the same parts of rfMRI
 		split -a 2 -x -l $L $PATH2RES/Movement_Regressors_1180.txt $PATH2REG/Movement_Regressors_part
 		split -a 2 -x -l $L $PATH2RES/CSF_meansignal.txt $PATH2REG/CSF_part
 		split -a 2 -x -l $L $PATH2RES/WM_meansignal.txt $PATH2REG/WM_part
@@ -390,9 +392,11 @@ for subject in "$PATH2DATA"/*; do
 		
 
 		#Glm
+		#try to emulate Glm file .mat
+
 
 		#fsl_glm
-		fsl_glm -i $PATH2RES/rfMRI_REST1_LR_part1.nii.gz -d  $PATH2RES/design200.mat -o betas --out_res= $PATH2RES/rfMRI_REST1_LR_part1_reg.nii.gz
+		fsl_glm -i $PATH2RES/rfMRI_REST1_LR_part1.nii.gz -d  $PATH2RES/design200bis.mat -o betas --out_res=$PATH2RES/rfMRI_REST1_LR_part1_regbis.nii.gz
 
 
 
