@@ -396,7 +396,7 @@ for subject in "$PATH2DATA"/*; do
 
 
 		#fsl_glm
-		fsl_glm -i $PATH2RES/rfMRI_REST1_LR_part1.nii.gz -d  $PATH2RES/design200bis.mat -o betas --out_res=$PATH2RES/rfMRI_REST1_LR_part1_regbis.nii.gz
+		fsl_glm -i $PATH2RES/rfMRI_REST1_LR_part1.nii.gz -d  $PATH2RES/design200bis.mat -o $PATH2RES/betas --out_res=$PATH2RES/rfMRI_REST1_LR_part1_regbis.nii.gz
 
 
 
