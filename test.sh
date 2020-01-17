@@ -6,4 +6,8 @@
 #awk -F " " '{print $1" "}' ../*.txt > ../collapsed_output.txt
 
 #works! need to save result in file
-pr -mts" " csf.txt mov.txt wm.txt > out.txt
+
+for (( i = 0; i < 20; i++ )); do
+	x=$(printf "%02d" $i)
+	echo $x
+done

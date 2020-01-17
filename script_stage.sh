@@ -10,7 +10,7 @@ Optional arguments
 
  -l <value>, --length <value>\t: change the length of 4D partial files (how many volumes per file). Try to decrease this value if some operations are too expensive for your pc. default = $L
 
- -v <value>, --volumes <value>\t: choose how many volumes you want to process (first 20 are discarded). default = $volumes
+ -v <value>, --volumes <value>\t: choose how many volumes you want to process (max: 1180). default = $(($volumes - 20))
 
  -h, --help\t\t\t: display this page
 
@@ -43,10 +43,10 @@ interactive=false
 repeat=true
 
 #length of rfMRI parts
-L=200
+L=20
 
-#must be 1200, can be changed for tests
-volumes=1200
+#max value: 1200
+volumes=40
 
 #default value, so every section is executed
 flag=true
@@ -72,7 +72,7 @@ while [[ "$1" != "" ]]; do
 			;;
 		-v | --volumes )
 			shift
-			volumes=$1
+			volumes=$(($1 + 20))
 			;;
 		-o | --one_subject )
 			repeat=false
@@ -139,12 +139,12 @@ fi
 
 #INTERACTIVE : volumes
 if [[ "$interactive" == true ]]; then
-	question "do you want to change the number of volumes processed? (first 20 are discarded, current = $volumes)?"
+	question "do you want to change the number of volumes processed? (first 20 are discarded, current = $(($volumes - 20)) )?"
 fi
 
 if [[ "$flag" == true && "$interactive" == true ]]; then
 	read -p "new value: " ans
-	volumes=$ans
+	volumes=$(($ans + 20))
 fi
 
 #INTERACTIVE : execute code for only one subject
@@ -193,33 +193,23 @@ for subject in "$PATH2DATA"/*; do
 		question "$id : start 1st section - creating frmi2T1W.mat ?"
 	fi
 
-	#string for storing rfMRI parts, so they can be removed at the end of the pipeline
-	parts=""
 	if [[ "$flag" == true ]]; then
 
 		#fslroi
 		#explanation
-		printf "\nfslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_1180.nii.gz 20 -1, result is divided in $((($volumes - 20 + $L - 1)/$L)) parts)\n"
-		#fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_1180.nii.gz 20 -1
-		for (( i = 1; $(($L*$i - $L + 20)) < $volumes; i++ )); do
-			#if remaining volumes are less then $L, a smaller part is created
-			ans=$(($volumes - (20 + $L*$i - $L) ))
-																								#check min between $L and remaining volumes
-			echo "fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz $((20 + $L*$i - $L)) $(( $ans < $L ? $ans : $L))"
-			fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz $((20 + $L*$i - $L)) $(( $ans < $L ? $ans : $L))
-			parts="${parts}$PATH2RES/rfMRI_REST1_LR_part$i.nii.gz "
-			if [[ $i == 1 ]]; then
-				echo "fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz"
-				fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz
-			else
-				echo "fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz"
-				fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz
-			fi
-		done
-		#merge all pieces
-		#printf "fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $parts\n"
-		#fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $parts
 
+		printf "\nfslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_1180.nii.gz 20 400\n" 
+		fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part1.nii.gz 20 400
+		printf "\nfslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_1180.nii.gz 420 400\n" 
+		fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part2.nii.gz 420 400
+		printf "\nfslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_1180.nii.gz 820 380\n" 
+		fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part3.nii.gz 820 380
+		printf "\nfslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part1.nii.gz $PATH2RES/rfMRI_REST1_LR_part2.nii.gz $PATH2RES/rfMRI_REST1_LR_part3.nii.gz\n"
+		fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part1.nii.gz $PATH2RES/rfMRI_REST1_LR_part2.nii.gz $PATH2RES/rfMRI_REST1_LR_part3.nii.gz
+
+		#remove partial files
+		rm $PATH2RES/rfMRI_REST1_LR_part*
+		
 		#brain extraction
 		#these images contain whole head, I need to extract the brain for next operations (epi_reg, applyXFM)
 
@@ -252,41 +242,10 @@ for subject in "$PATH2DATA"/*; do
 		flirt -in $rfMRI_REST1_LR_SBRef -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_SBRef_fmri2T1w -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
 
 	fi
+	
+	echo "2nd section currently not available"
 
-	#INTERACTIVE : 2nd section
-	if [[ "$interactive" == true ]]; then
-		question "$id : start 2nd section - applying fmri2T1W.mat to rfMRI_REST1_LR_1180?"
-	fi
-
-	if [[ "$flag" == true ]]; then
-		#Apply to rfMRI_REST1_LR_1180.nii.gz
-		#merge2=""
-
-		i=1
-		for part in $parts; do
-			echo "flirt -in $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_T1w_part$i.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz"
-			flirt -in $PATH2RES/rfMRI_REST1_LR_part$i.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_T1w_part$i.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
-			#merge2="${merge2}$PATH2RES/rfMRI_REST1_LR_T1w_part$(($i + 1)).nii.gz "
-			if [[ $i == 1 ]]; then
-				echo "fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180_T1w.nii.gz $PATH2RES/rfMRI_REST1_LR_T1w_part$i.nii.gz"
-				#fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180_T1w.nii.gz $PATH2RES/rfMRI_REST1_LR_T1w_part$i.nii.gz
-			else
-				echo "fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180_T1w.nii.gz $PATH2RES/rfMRI_REST1_LR_1180_T1w.nii.gz $PATH2RES/rfMRI_REST1_LR_T1w_part$i.nii.gz"
-				#fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180_T1w.nii.gz $PATH2RES/rfMRI_REST1_LR_1180_T1w.nii.gz $PATH2RES/rfMRI_REST1_LR_T1w_part$i.nii.gz
-			fi
-			
-			#rm $PATH2RES/rfMRI_REST1_LR_T1w_part$i.nii.gz
-			((i++))
-			#only if L doesn't divide 1180 
-		done
-		#merge all parts
-		#printf "fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180_T1w.nii.gz $merge2\n"
-		#fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180_T1w.nii.gz $merge2
-		#remove parts
-		#rm $merge2
-	fi
-
-	#INTERACTIVE : Second section
+	#INTERACTIVE : third section
 	if [[ "$interactive" == true ]]; then
 		question "$id : start 3rd section - obtaining CSF/WM/GM_meansignal?"
 	fi
@@ -350,53 +309,57 @@ for subject in "$PATH2DATA"/*; do
 
 	fi
 
-	#INTERACTIVE : Third section
+	#INTERACTIVE : 4th section
 	if [[ "$interactive" == true ]]; then
 		question "$id : start 4th section - linear regression?"
 	fi
 
 	if [[ "$flag" == true ]]; then
+
 		#remove first 20 lines from Movement_Regressors.txt
 		sed '1,20d' "$subject/${id}_3T_rfMRI_REST1_preproc/$id/MNINonLinear/Results/rfMRI_REST1_LR/Movement_Regressors.txt" > $PATH2RES/Movement_Regressors_1180.txt
-		#echo "add 2 columns CSF & WM, then Glm for linear regression"
-		#pr -mts"  " $PATH2RES/Movement_Regressors_1180.txt $PATH2RES/CSF_meansignal.txt $PATH2RES/WM_meansignal.txt > $PATH2RES/Mov_regressors_CSF_WM.txt
 		
-
-		#create a file for each column (14 files), then create design (Glm) for linear regression (fsl_glm)
-
 		#create folder for all *.txt regressors
 		mkdir -p $PATH2RES/regressors
 		PATH2REG="$PATH2RES/regressors"
 
+		#move matlab scrip to regressors folder
+		cp regressors.m $PATH2REG/regressors.m
+
+		#run matlab script
+
+
 		#use split to divide regressors in the same parts of rfMRI
-		split -a 2 -x -l $L $PATH2RES/Movement_Regressors_1180.txt $PATH2REG/Movement_Regressors_part
-		split -a 2 -x -l $L $PATH2RES/CSF_meansignal.txt $PATH2REG/CSF_part
-		split -a 2 -x -l $L $PATH2RES/WM_meansignal.txt $PATH2REG/WM_part
+		split -a 2 -x -l $L $PATH2REG/Regressors_1180.txt $PATH2REG/Regressors_part
 
 		i=0
 		for entry in "$PATH2REG"/Mov*; do
-			awk '{print $1}' $entry > $PATH2REG/part${i}_col1.txt
-			awk '{print $2}' $entry > $PATH2REG/part${i}_col2.txt
-			awk '{print $3}' $entry > $PATH2REG/part${i}_col3.txt
-			awk '{print $4}' $entry > $PATH2REG/part${i}_col4.txt
-			awk '{print $5}' $entry > $PATH2REG/part${i}_col5.txt
-			awk '{print $6}' $entry > $PATH2REG/part${i}_col6.txt
-			awk '{print $7}' $entry > $PATH2REG/part${i}_col7.txt
-			awk '{print $8}' $entry > $PATH2REG/part${i}_col8.txt
-			awk '{print $9}' $entry > $PATH2REG/part${i}_col9.txt
-			awk '{print $10}' $entry > $PATH2REG/part${i}_col10.txt
-			awk '{print $11}' $entry > $PATH2REG/part${i}_col11.txt
-			awk '{print $12}' $entry > $PATH2REG/part${i}_col12.txt
+
+			# Use the Text2Vest tool, bundled with FSL, to convert the data into the format used by FSL
+			Text2Vest $PATH2RES/design_part$(($i + 1)).txt $PATH2RES/design_part$(($i + 1)).mat
+			rm $PATH2RES/design_part$(($i + 1)).txt
+
+			#fsl_glm
+			echo "ok"
+			fsl_glm -i $PATH2RES/rfMRI_REST1_LR_part$(($i + 1)).nii.gz -d  $PATH2RES/design_part$(($i + 1)).mat -o $PATH2RES/betas --out_res=$PATH2RES/rfMRI_REST1_LR_part$(($i + 1))_reg.nii.gz
+			echo "ok"
+			break
+			
+
+
+			#fslstats -m o fslmaths -Tmean
+			#sottrai a ogni colonna
+			
+			#cerca se glm toglie media
+
+			#prova fsl_glm con 400 volumi, minimo 250
+			#400 volumi funziona
+
 			((i++))
 		done
 		
 
-		#Glm
-		#try to emulate Glm file .mat
-
-
-		#fsl_glm
-		fsl_glm -i $PATH2RES/rfMRI_REST1_LR_part1.nii.gz -d  $PATH2RES/design200bis.mat -o $PATH2RES/betas --out_res=$PATH2RES/rfMRI_REST1_LR_part1_regbis.nii.gz
+		
 
 
 
