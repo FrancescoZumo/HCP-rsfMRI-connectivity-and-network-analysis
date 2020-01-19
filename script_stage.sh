@@ -43,10 +43,10 @@ interactive=false
 repeat=true
 
 #length of rfMRI parts
-L=20
+L=400
 
 #max value: 1200
-volumes=40
+volumes=420
 
 #default value, so every section is executed
 flag=true
@@ -208,7 +208,7 @@ for subject in "$PATH2DATA"/*; do
 		fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part1.nii.gz $PATH2RES/rfMRI_REST1_LR_part2.nii.gz $PATH2RES/rfMRI_REST1_LR_part3.nii.gz
 
 		#remove partial files
-		rm $PATH2RES/rfMRI_REST1_LR_part*
+		#rm $PATH2RES/rfMRI_REST1_LR_part*
 		
 		#brain extraction
 		#these images contain whole head, I need to extract the brain for next operations (epi_reg, applyXFM)
@@ -318,37 +318,28 @@ for subject in "$PATH2DATA"/*; do
 
 		#remove first 20 lines from Movement_Regressors.txt
 		sed '1,20d' "$subject/${id}_3T_rfMRI_REST1_preproc/$id/MNINonLinear/Results/rfMRI_REST1_LR/Movement_Regressors.txt" > $PATH2RES/Movement_Regressors_1180.txt
-		
-		#create folder for all *.txt regressors
-		mkdir -p $PATH2RES/regressors
-		PATH2REG="$PATH2RES/regressors"
 
-		#move matlab scrip to regressors folder
-		cp regressors.m $PATH2REG/regressors.m
-
-		#run matlab script
-
+		#run matlab script, need to insert variable instead of text
+		matlab -batch 'regressors("../Data/102614/results")'
 
 		#use split to divide regressors in the same parts of rfMRI
-		split -a 2 -x -l $L $PATH2REG/Regressors_1180.txt $PATH2REG/Regressors_part
+		split -a 2 -x -l 400 $PATH2RES/Regressors.txt $PATH2RES/Regressors_part
 
 		i=0
-		for entry in "$PATH2REG"/Mov*; do
+		for entry in "$PATH2RES"/Regressors_part*; do
 
 			# Use the Text2Vest tool, bundled with FSL, to convert the data into the format used by FSL
-			Text2Vest $PATH2RES/design_part$(($i + 1)).txt $PATH2RES/design_part$(($i + 1)).mat
-			rm $PATH2RES/design_part$(($i + 1)).txt
+			Text2Vest $entry $PATH2RES/design_part$(($i + 1)).mat
 
 			#fsl_glm
-			echo "ok"
+			echo "starting fsl_glm"
 			fsl_glm -i $PATH2RES/rfMRI_REST1_LR_part$(($i + 1)).nii.gz -d  $PATH2RES/design_part$(($i + 1)).mat -o $PATH2RES/betas --out_res=$PATH2RES/rfMRI_REST1_LR_part$(($i + 1))_reg.nii.gz
 			echo "ok"
 			break
-			
-
 
 			#fslstats -m o fslmaths -Tmean
 			#sottrai a ogni colonna
+			#fatto con matlab
 			
 			#cerca se glm toglie media
 
@@ -357,11 +348,6 @@ for subject in "$PATH2DATA"/*; do
 
 			((i++))
 		done
-		
-
-		
-
-
 
 		#remove partial files remained
 		#rm $parts
