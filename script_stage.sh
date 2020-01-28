@@ -8,9 +8,9 @@ Optional arguments
 
  -p <path>, --path <path>\t: set a different path to data
 
- -l <value>, --length <value>\t: change the length of 4D partial files (how many volumes per file). Try to decrease this value if some operations are too expensive for your pc. default = $L
+ -l <value>, --length <value>\t: --- currently not available ---
 
- -v <value>, --volumes <value>\t: choose how many volumes you want to process (max: 1180). default = $(($volumes - 20))
+ -v <value>, --volumes <value>\t: --- currently not available ---
 
  -h, --help\t\t\t: display this page
 
@@ -199,13 +199,13 @@ for subject in "$PATH2DATA"/*; do
 		#explanation
 
 		printf "\nfslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_1180.nii.gz 20 400\n" 
-		fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part1.nii.gz 20 400
+		fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part0.nii.gz 20 400
 		printf "\nfslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_1180.nii.gz 420 400\n" 
-		fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part2.nii.gz 420 400
+		fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part1.nii.gz 420 400
 		printf "\nfslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_1180.nii.gz 820 380\n" 
-		fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part3.nii.gz 820 380
-		printf "\nfslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part1.nii.gz $PATH2RES/rfMRI_REST1_LR_part2.nii.gz $PATH2RES/rfMRI_REST1_LR_part3.nii.gz\n"
-		fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part1.nii.gz $PATH2RES/rfMRI_REST1_LR_part2.nii.gz $PATH2RES/rfMRI_REST1_LR_part3.nii.gz
+		fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part2.nii.gz 820 380
+		printf "\nfslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part0.nii.gz $PATH2RES/rfMRI_REST1_LR_part1.nii.gz $PATH2RES/rfMRI_REST1_LR_part2.nii.gz\n"
+		fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part0.nii.gz $PATH2RES/rfMRI_REST1_LR_part1.nii.gz $PATH2RES/rfMRI_REST1_LR_part2.nii.gz
 
 		#remove partial files
 		#rm $PATH2RES/rfMRI_REST1_LR_part*
@@ -244,6 +244,11 @@ for subject in "$PATH2DATA"/*; do
 	fi
 	
 	echo "2nd section currently not available"
+
+	#Apply to rfMRI_REST1_LR_1180.nii.gz
+	#printf "\nflirt -in $PATH2RES/rfMRI_REST1_LR_1180.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_1180_matApplied.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz\n"
+	#flirt -in $PATH2RES/rfMRI_REST1_LR_1180.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_1180_2T1w.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
+
 
 	#INTERACTIVE : third section
 	if [[ "$interactive" == true ]]; then
@@ -311,53 +316,61 @@ for subject in "$PATH2DATA"/*; do
 
 	#INTERACTIVE : 4th section
 	if [[ "$interactive" == true ]]; then
-		question "$id : start 4th section - linear regression?"
+		question "$id : start 4th section - noisance regression?"
 	fi
 
 	if [[ "$flag" == true ]]; then
+		#testato su:
+		#102614 --> funziona bene 
+		#100307 --> no
+		#105923 --> no
 
 		#remove first 20 lines from Movement_Regressors.txt
 		sed '1,20d' "$subject/${id}_3T_rfMRI_REST1_preproc/$id/MNINonLinear/Results/rfMRI_REST1_LR/Movement_Regressors.txt" > $PATH2RES/Movement_Regressors_1180.txt
 
-		#run matlab script, need to insert variable instead of text
-		matlab -batch 'regressors("../Data/102614/results")'
-
-		#use split to divide regressors in the same parts of rfMRI
-		split -a 2 -x -l 400 $PATH2RES/Regressors.txt $PATH2RES/Regressors_part
-
-		i=0
-		for entry in "$PATH2RES"/Regressors_part*; do
-
-			# Use the Text2Vest tool, bundled with FSL, to convert the data into the format used by FSL
-			Text2Vest $entry $PATH2RES/design_part$(($i + 1)).mat
-
-			#fsl_glm
-			echo "starting fsl_glm"
-			fsl_glm -i $PATH2RES/rfMRI_REST1_LR_part$(($i + 1)).nii.gz -d  $PATH2RES/design_part$(($i + 1)).mat -o $PATH2RES/betas --out_res=$PATH2RES/rfMRI_REST1_LR_part$(($i + 1))_reg.nii.gz
-			echo "ok"
-			break
-
-			#fslstats -m o fslmaths -Tmean
-			#sottrai a ogni colonna
-			#fatto con matlab
-			
-			#cerca se glm toglie media
-
-			#prova fsl_glm con 400 volumi, minimo 250
-			#400 volumi funziona
-
-			((i++))
-		done
-
-		#remove partial files remained
-		#rm $parts
 		
-		#when interactive, ask if continue or exit
-		if [[ "$repeat" == false ]]; then
-			question "subject $id completed, do you want to continue with next subject?"
-			if [[ "$flag" == false  ]]; then
-				exit
-			fi
-		fi
+		#copy matlab script in resources folder
+		cp regressors.m $PATH2RES/regressors.m
+
+		#with matlab
+		#this script removes mean from every column and adds CSf and WM columns
+		matlab -nodisplay -nosplash -nodesktop -r "run('$PATH2RES/regressors.m');exit;" | tail -n +11
+
+		# Use the Text2Vest tool, bundled with FSL, to convert the data into the format used by FSL
+		Text2Vest $PATH2RES/Regressors_part0.txt $PATH2RES/design_part0.mat
+		
+		#fsl_glm
+		echo "fsl_glm -i $PATH2RES/rfMRI_REST1_LR_part1.nii.gz -d  $PATH2RES/design_part0.mat -o $PATH2RES/betas --out_res=$PATH2RES/rfMRI_REST1_LR_part1_reg.nii.gz"
+		fsl_glm -i $PATH2RES/rfMRI_REST1_LR_part0.nii.gz -d  $PATH2RES/design_part0.mat -o $PATH2RES/betas --out_res=$PATH2RES/rfMRI_REST1_LR_part0_reg.nii.gz
+	fi
+
+	#INTERACTIVE : 5th section
+	if [[ "$interactive" == true ]]; then
+		question "$id : start 5th section - Filtering?"
+	fi
+
+	if [[ "$flag" == true ]]; then
+
+		#sigma = 1/(2*TR*cutoff_in_hz)
+		#explain what you are doing
+		TR=0.782
+		hp_cutoff=0.009
+		hp_sigma=$( bc <<< "scale=8; 1/(2 * $TR * $hp_cutoff)" )
+		
+		#explain what you are doing
+		lp_cutoff=0.08
+		lp_sigma=$( bc <<< "scale=8; 1/(2 * $TR * $lp_cutoff)" )
+
+		#demeaning rfMRI
+		
+		#Filtering
+		
+		#adding mean
+		
+		
+	fi
+
+	if [[ "$repeat" == false ]]; then
+		break
 	fi
 done
