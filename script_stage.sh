@@ -1,21 +1,14 @@
 #!/bin/bash
 
-#keep it updated!
 usage (){
 	printf "\nUsage: ./script [options]
 
 Optional arguments
-
  -p <path>, --path <path>\t: set a different path to data
-
- -l <value>, --length <value>\t: --- currently not available ---
-
- -v <value>, --volumes <value>\t: --- currently not available ---
-
+ -l <value>, --length <value>\t: --- should be removed ---
+ -v <value>, --volumes <value>\t: number of volumes processed (max 1180)
  -h, --help\t\t\t: display this page
-
  -i, --interactive\t\t: enable interactive mode: choose which sections will be launched and see all available settings
-
  -o, --one_subject\t\t: only one subject is processed\n"
 }
 question (){
@@ -36,6 +29,7 @@ question (){
 
 #Default path to HCP data 
 PATH2DATA="../Data"
+
 #will be set true if -i argument is used
 interactive=false
 
@@ -43,7 +37,7 @@ interactive=false
 repeat=true
 
 #length of rfMRI parts
-L=400
+#L=400
 
 #max value: 1200
 volumes=420
@@ -128,18 +122,18 @@ if [[ "$flag" == true ]]; then
 fi
 
 #INTERACTIVE : length
-if [[ "$interactive" == true ]]; then
-	question "do you want to change the length of partial files (current = $L)?"
-fi
+#if [[ "$interactive" == true ]]; then
+#	question "do you want to change the length of partial files (current = $L)?"
+#fi
 
-if [[ "$flag" == true && "$interactive" == true ]]; then
-	read -p "new value: " ans
-	L=$ans
-fi
+#if [[ "$flag" == true && "$interactive" == true ]]; then
+#	read -p "new value: " ans
+#	L=$ans
+#fi
 
 #INTERACTIVE : volumes
 if [[ "$interactive" == true ]]; then
-	question "do you want to change the number of volumes processed? (first 20 are discarded, current = $(($volumes - 20)) )?"
+	question "do you want to change the number of volumes processed (max 1180)?"
 fi
 
 if [[ "$flag" == true && "$interactive" == true ]]; then
@@ -164,7 +158,7 @@ fi
 for subject in "$PATH2DATA"/*; do
 	id=${subject#"$PATH2DATA/"}
 
-	#ignore ther files
+	#ignore other files
 	if ! [[ "$id" == ?????? && "$id" =~ ^[0-9]+$ ]]; then
 		continue
 	fi
@@ -174,12 +168,13 @@ for subject in "$PATH2DATA"/*; do
 		echo "${id}'s data has been already processed"
 		continue
 	fi
+	#creating results folder
 	PATH2RES="$subject/results"
 	rfMRI=$id_
 	mkdir -p $subject/results
 
 	#if SIGINT or SIGTERM is received, results folder is renamed before exiting
-	trap "mv -f $subject/results $subject/interrupted$$; echo ' pipeline interrupted, results name changed in interrupted$$'; exit" SIGINT SIGTERM
+	trap "mv -f $subject/results $subject/res_interrupted$$; echo ' pipeline interrupted, results name changed in res_interrupted$$'; exit" SIGINT SIGTERM
 
 	#saving the path for each file that will be used
 	SBRef_dc_T1w="$subject/${id}_3T_rfMRI_REST1_preproc/$id/T1w/Results/rfMRI_REST1_LR/SBRef_dc.nii.gz"
@@ -198,6 +193,8 @@ for subject in "$PATH2DATA"/*; do
 		#fslroi
 		#explanation
 
+		#qui dovrei semplicemente rimuovere 20 volumi, senza spezzettare in parti
+
 		printf "\nfslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_1180.nii.gz 20 400\n" 
 		fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part0.nii.gz 20 400
 		printf "\nfslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_1180.nii.gz 420 400\n" 
@@ -206,9 +203,6 @@ for subject in "$PATH2DATA"/*; do
 		fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part2.nii.gz 820 380
 		printf "\nfslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part0.nii.gz $PATH2RES/rfMRI_REST1_LR_part1.nii.gz $PATH2RES/rfMRI_REST1_LR_part2.nii.gz\n"
 		fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part0.nii.gz $PATH2RES/rfMRI_REST1_LR_part1.nii.gz $PATH2RES/rfMRI_REST1_LR_part2.nii.gz
-
-		#remove partial files
-		#rm $PATH2RES/rfMRI_REST1_LR_part*
 		
 		#brain extraction
 		#these images contain whole head, I need to extract the brain for next operations (epi_reg, applyXFM)
@@ -233,7 +227,7 @@ for subject in "$PATH2DATA"/*; do
 		printf "\nepi_reg --epi=$PATH2RES/SBRef_dc_T1w_brain.nii.gz --t1=$T1w_acpc_dc_restore --t1brain=$PATH2RES/T1w_acpc_dc_restore_brain.nii.gz --out=$PATH2RES/epi2struct\n"
 		epi_reg --epi=$PATH2RES/SBRef_dc_T1w_brain.nii.gz --t1=$T1w_acpc_dc_restore --t1brain=$PATH2RES/T1w_acpc_dc_restore_brain.nii.gz --out=$PATH2RES/epi2struct
 
-		#Concatxfm - in order to obtain fmri2T1w.mat 
+		#Concatxfm - in order to obtain fmri2T1w.mat, I have to concatenate the previous two matrices
 		printf "\nconvert_xfm -omat $PATH2RES/fmri2T1w_07.mat -concat $PATH2RES/epi2struct.mat $PATH2RES/flirt.mat \n"
 		convert_xfm -omat $PATH2RES/fmri2T1w_07.mat -concat $PATH2RES/epi2struct.mat $PATH2RES/flirt.mat 
 
@@ -243,16 +237,16 @@ for subject in "$PATH2DATA"/*; do
 
 	fi
 	
-	echo "2nd section currently not available"
+	echo "section 1.5 currently not available"
 
 	#Apply to rfMRI_REST1_LR_1180.nii.gz
 	#printf "\nflirt -in $PATH2RES/rfMRI_REST1_LR_1180.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_1180_matApplied.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz\n"
 	#flirt -in $PATH2RES/rfMRI_REST1_LR_1180.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_1180_2T1w.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
 
 
-	#INTERACTIVE : third section
+	#INTERACTIVE : 2nd section
 	if [[ "$interactive" == true ]]; then
-		question "$id : start 3rd section - obtaining CSF/WM/GM_meansignal?"
+		question "$id : start 2nd section - obtaining CSF/WM/GM_meansignal?"
 	fi
 
 	if [[ "$flag" == true ]]; then
@@ -314,9 +308,9 @@ for subject in "$PATH2DATA"/*; do
 
 	fi
 
-	#INTERACTIVE : 4th section
+	#INTERACTIVE : 3rd section
 	if [[ "$interactive" == true ]]; then
-		question "$id : start 4th section - noisance regression?"
+		question "$id : start 3rd section - noisance regression?"
 	fi
 
 	if [[ "$flag" == true ]]; then
@@ -344,9 +338,9 @@ for subject in "$PATH2DATA"/*; do
 		fsl_glm -i $PATH2RES/rfMRI_REST1_LR_part0.nii.gz -d  $PATH2RES/design_part0.mat -o $PATH2RES/betas --out_res=$PATH2RES/rfMRI_REST1_LR_part0_reg.nii.gz
 	fi
 
-	#INTERACTIVE : 5th section
+	#INTERACTIVE : 4th section
 	if [[ "$interactive" == true ]]; then
-		question "$id : start 5th section - Filtering?"
+		question "$id : start 4th section - Filtering?"
 	fi
 
 	if [[ "$flag" == true ]]; then
