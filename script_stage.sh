@@ -5,7 +5,6 @@ usage (){
 
 Optional arguments
  -p <path>, --path <path>\t: set a different path to data
- -l <value>, --length <value>\t: --- should be removed ---
  -v <value>, --volumes <value>\t: number of volumes processed (current: $volumes, max: 1180)
  -h, --help\t\t\t: display this page
  -i, --interactive\t\t: enable interactive mode: choose which sections will be launched and see all available settings
@@ -36,9 +35,6 @@ interactive=false
 # if == false, only one subject will be processed
 repeat=true
 
-# length of rfMRI parts
-#L=400
-
 # max value: 1200
 volumes=400
 
@@ -59,10 +55,6 @@ while [[ "$1" != "" ]]; do
 		-i | --interactive )
 			interactive=true
 			echo "<interactive mode enabled>"
-			;;
-		-l | --length )
-			shift
-			L=$1
 			;;
 		-v | --volumes )
 			shift
@@ -120,16 +112,6 @@ if [[ "$flag" == true ]]; then
 		fi
 	done
 fi
-
-#INTERACTIVE : length
-#if [[ "$interactive" == true ]]; then
-#	question "do you want to change the length of partial files (current = $L)?"
-#fi
-
-#if [[ "$flag" == true && "$interactive" == true ]]; then
-#	read -p "new value: " ans
-#	L=$ans
-#fi
 
 # INTERACTIVE : volumes
 if [[ "$interactive" == true ]]; then
