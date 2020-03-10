@@ -172,12 +172,21 @@ for subject in "$PATH2DATA"/*; do
 
 	if [[ "$flag" == true ]]; then
 
-		# fslroi
-		# explanation
-
-		# removing first 20 volumes
+		# removing first 20 volumes, to remove instrumental error
 		printf "\nfslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_1180.nii.gz 20 1180\n" 
-		fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_1180.nii.gz 20 1180
+		
+		# this operation is divided in two parts, but you can uncomment the next line and comment/remove the following four
+		#fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_1180.nii.gz 20 1180
+
+		fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part1.nii.gz 20 600
+		fslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_part2.nii.gz 620 580
+		fslmerge -a $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_part1.nii.gz $PATH2RES/rfMRI_REST1_LR_part2.nii.gz
+		rm $PATH2RES/rfMRI_REST1_LR_part1.nii.gz $PATH2RES/rfMRI_REST1_LR_part2.nii.gz
+
+
+		# extracting volumes that will be processed ($volumes)
+		printf "\nfslroi $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_${volumes}.nii.gz 0 $volumes\n" 
+		fslroi $PATH2RES/rfMRI_REST1_LR_1180.nii.gz $PATH2RES/rfMRI_REST1_LR_${volumes}.nii.gz 0 $volumes
 		
 		# Brain extraction
 		# these images contain whole head, I need to extract the brain for next operations (epi_reg, applyXFM)
@@ -197,6 +206,7 @@ for subject in "$PATH2DATA"/*; do
 
 		# epi_reg
 		# phase two: now I want to match SBRef (res=0.7mm) with T1w_acpc_dc_restore image. 
+		# parameters: 6dof
 		# I expect lower values since both images have the same resolution and are in the same space (T1w)
 		printf "\nepi_reg --epi=$PATH2RES/SBRef_dc_T1w_brain.nii.gz --t1=$T1w_acpc_dc_restore --t1brain=$PATH2RES/T1w_acpc_dc_restore_brain.nii.gz --out=$PATH2RES/epi2struct\n"
 		epi_reg --epi=$PATH2RES/SBRef_dc_T1w_brain.nii.gz --t1=$T1w_acpc_dc_restore --t1brain=$PATH2RES/T1w_acpc_dc_restore_brain.nii.gz --out=$PATH2RES/epi2struct
@@ -209,14 +219,14 @@ for subject in "$PATH2DATA"/*; do
 		printf "\nflirt -in $rfMRI_REST1_LR_SBRef -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_SBRef_matApplied -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz\n"
 		flirt -in $rfMRI_REST1_LR_SBRef -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_SBRef_fmri2T1w -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
 
+		
+		# the operation below needs high specs to be performed
+		
+		#Apply to rfMRI_REST1_LR_1180.nii.gz
+		#printf "\nflirt -in $PATH2RES/rfMRI_REST1_LR_1180.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_1180_matApplied.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz\n"
+		#flirt -in $PATH2RES/rfMRI_REST1_LR_1180.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_1180_2T1w.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
 	fi
 	
-	echo "section 1.5 currently not available"
-
-	#Apply to rfMRI_REST1_LR_1180.nii.gz
-	#printf "\nflirt -in $PATH2RES/rfMRI_REST1_LR_1180.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_1180_matApplied.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz\n"
-	#flirt -in $PATH2RES/rfMRI_REST1_LR_1180.nii.gz -applyxfm -init $PATH2RES/fmri2T1w_07.mat -out $PATH2RES/rfMRI_REST1_LR_1180_2T1w.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
-
 	#INTERACTIVE : 2nd section
 	if [[ "$interactive" == true ]]; then
 		question "$id : start 2nd section - obtaining CSF/WM/GM_meansignal?"
@@ -229,24 +239,25 @@ for subject in "$PATH2DATA"/*; do
 		fast $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz
 
 		# convert_xfm
-		# obtaining inverse matrix from T1w207fmri.mat --> fmri2T1w_07.mat
+		# obtaining inverse matrix from fmri2T1w_07.mat --> T1w207fmri.mat 
 		printf "\nconvert_xfm -omat $PATH2RES/T1w207fmri.mat -inverse $PATH2RES/fmri2T1w_07.mat\n"
 		convert_xfm -omat $PATH2RES/T1w207fmri.mat -inverse $PATH2RES/fmri2T1w_07.mat
 
-		# mat applied to T1w_brain
-		# description
+		# applyxfm 
+
+		# applying T1w207fmri.mat to T1w_brain
 		printf "\nflirt -in $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz -applyxfm -init $PATH2RES/T1w207fmri.mat -out $PATH2RES/T1w_brain2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz\n"
 		flirt -in $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz -applyxfm -init $PATH2RES/T1w207fmri.mat -out $PATH2RES/T1w_brain2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz
 
-		# applying fmri2T1w_07.mat to T1w_acpc_dc_restore_brain_pve_0.nii.gz : CSF
+		# applying T1w207fmri.mat to T1w_acpc_dc_restore_brain_pve_0.nii.gz : CSF
 		printf "\nflirt -in $PATH2RES/T1w_acpc_dc_restore_brain_pve_0.nii.gz -applyxfm -init $PATH2RES/T1w207fmri.mat -out $PATH2RES/CSF2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz\n"
 		flirt -in $PATH2RES/T1w_acpc_dc_restore_brain_pve_0.nii.gz -applyxfm -init $PATH2RES/T1w207fmri.mat -out $PATH2RES/CSF2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz
 		
-		# applying fmri2T1w_07.mat to T1w_acpc_dc_restore_brain_pve_1.nii.gz : GM
+		# applying T1w207fmri.mat to T1w_acpc_dc_restore_brain_pve_1.nii.gz : GM
 		printf "\nflirt -in $PATH2RES/T1w_acpc_dc_restore_brain_pve_1.nii.gz -applyxfm -init $PATH2RES/T1w207fmri.mat -out $PATH2RES/GM2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz\n"
 		flirt -in $PATH2RES/T1w_acpc_dc_restore_brain_pve_1.nii.gz -applyxfm -init $PATH2RES/T1w207fmri.mat -out $PATH2RES/GM2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz
 
-		# applying fmri2T1w_07.mat to T1w_acpc_dc_restore_brain_pve_2.nii.gz : WM
+		# applying T1w207fmri.mat to T1w_acpc_dc_restore_brain_pve_2.nii.gz : WM
 		printf "\nflirt -in $PATH2RES/T1w_acpc_dc_restore_brain_pve_2.nii.gz -applyxfm -init $PATH2RES/T1w207fmri.mat -out $PATH2RES/WM2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz\n"
 		flirt -in $PATH2RES/T1w_acpc_dc_restore_brain_pve_2.nii.gz -applyxfm -init $PATH2RES/T1w207fmri.mat -out $PATH2RES/WM2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz
 
@@ -295,14 +306,16 @@ for subject in "$PATH2DATA"/*; do
 
 		#with matlab
 		#this script removes mean from every column and adds CSf and WM columns
-		matlab -nodisplay -nosplash -nodesktop -r "run('$PATH2RES/regressors.m');exit;" | tail -n +11
+		#matlab -nodisplay -nosplash -nodesktop -r "run('$PATH2RES/regressors.m');exit;" | tail -n +11
+		printf "\nremoving mean from regressors with regressors.m\n"
+		matlab -nodisplay -nosplash -nodesktop -r "cd('$PATH2RES'); regressors($volumes);exit" | tail -n +11
 
 		# Use the Text2Vest tool, bundled with FSL, to convert the data into the format used by FSL
-		Text2Vest $PATH2RES/Regressors_part0.txt $PATH2RES/design_part0.mat
+		Text2Vest $PATH2RES/Regressors.txt $PATH2RES/design.mat
 		
-		#fsl_glm
-		echo "fsl_glm -i $PATH2RES/rfMRI_REST1_LR_part1.nii.gz -d  $PATH2RES/design_part0.mat -o $PATH2RES/betas --out_res=$PATH2RES/rfMRI_REST1_LR_part1_reg.nii.gz"
-		fsl_glm -i $PATH2RES/rfMRI_REST1_LR_part0.nii.gz -d  $PATH2RES/design_part0.mat -o $PATH2RES/betas --out_res=$PATH2RES/rfMRI_REST1_LR_part0_reg.nii.gz
+		#fsl_glm, applying general linear model
+		echo "fsl_glm -i $PATH2RES/rfMRI_REST1_LR_${volumes}.nii.gz -d  $PATH2RES/design.mat -o $PATH2RES/betas --out_res=$PATH2RES/rfMRI_REST1_LR_${volumes}_reg.nii.gz"
+		fsl_glm -i $PATH2RES/rfMRI_REST1_LR_${volumes}.nii.gz -d  $PATH2RES/design.mat -o $PATH2RES/betas --out_res=$PATH2RES/rfMRI_REST1_LR_${volumes}_reg.nii.gz
 	fi
 
 	#INTERACTIVE : 4th section
@@ -312,25 +325,44 @@ for subject in "$PATH2DATA"/*; do
 
 	if [[ "$flag" == true ]]; then
 
-		#sigma = 1/(2*TR*cutoff_in_hz)
-		#explain what you are doing
+		# Implementing Band Pass filter 0.009-0.08Hz
+
 		TR=0.782
 		hp_cutoff=0.009
-		hp_sigma=$( bc <<< "scale=8; 1/(2 * $TR * $hp_cutoff)" )
-		
-		#explain what you are doing
 		lp_cutoff=0.08
+		
+		# sigma = 1/(2*TR*cutoff_in_hz), obtained with bc
+		hp_sigma=$( bc <<< "scale=8; 1/(2 * $TR * $hp_cutoff)" )
+		# bash doesn't handle float numbers, so I have to add 0 to values < 1
+		if [[ $hp_sigma == .* ]]; then
+			hp_sigma="0$hp_sigma" 
+		fi
+		
+		# same for low pass filter
 		lp_sigma=$( bc <<< "scale=8; 1/(2 * $TR * $lp_cutoff)" )
+		if [[ $lp_sigma == .* ]]; then
+			lp_sigma="0$lp_sigma" 
+		fi
 
-		#demeaning rfMRI
-		
-		#Filtering
-		
-		#adding mean
-		
+		#removing Tmean from rfMRI
+		printf "\nfslmaths $PATH2RES/rfMRI_REST1_LR_${volumes}_reg.nii.gz -Tmean $PATH2RES/rfMRI_REST1_LR_${volumes}_Tmean.nii.gz\n"
+		fslmaths $PATH2RES/rfMRI_REST1_LR_${volumes}_reg.nii.gz -Tmean $PATH2RES/rfMRI_REST1_LR_${volumes}_Tmean.nii.gz
+
+		# Obtaining Tmean file (Tmean = fmri - fmri_noTmean)
+		printf "\nfslmaths $PATH2RES/rfMRI_REST1_LR_${volumes}_reg.nii.gz -sub $PATH2RES/rfMRI_REST1_LR_${volumes}_Tmean.nii.gz $PATH2RES/rfMRI_REST1_LR_${volumes}_noTmean.nii.gz\n"
+		fslmaths $PATH2RES/rfMRI_REST1_LR_${volumes}_reg.nii.gz -sub $PATH2RES/rfMRI_REST1_LR_${volumes}_Tmean.nii.gz $PATH2RES/rfMRI_REST1_LR_${volumes}_noTmean.nii.gz
+
+		#Filtering rfMRI
+		printf "\nfslmaths $PATH2RES/rfMRI_REST1_LR_${volumes}_noTmean.nii.gz -bptf $hp_sigma $lp_sigma $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered_noTmean.nii.gz\n"
+		fslmaths $PATH2RES/rfMRI_REST1_LR_${volumes}_noTmean.nii.gz -bptf $hp_sigma $lp_sigma $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered_noTmean.nii.gz
+
+		# adding mean to filtered rfMRI
+		printf "\nfslmaths $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered_noTmean.nii.gz -add $PATH2RES/rfMRI_REST1_LR_${volumes}_Tmean.nii.gz $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz\n"
+		fslmaths $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered_noTmean.nii.gz -add $PATH2RES/rfMRI_REST1_LR_${volumes}_Tmean.nii.gz $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz
 	fi
 
 	if [[ "$repeat" == false ]]; then
 		break
 	fi
+
 done
