@@ -4,8 +4,10 @@ usage (){
 	printf "\nUsage: ./script [options]
 
 Optional arguments
- -p <path>, --path <path>\t: set a different path to data
+ -p <path>, --path <path>\t: set a different path to data folder (current path: $PATH2DATA)
  -v <value>, --volumes <value>\t: number of volumes processed (current: $volumes, max: 1180)
+ -hp <value>, --hp_cutoff <value>\t: high pass filter cutoff (default: ${hp_cutoff}Hz)
+ -lp <value>, --lp_cutoff <value>\t: low pass filter cutoff (default: ${lp_cutoff}Hz)
  -h, --help\t\t\t: display this page
  -i, --interactive\t\t: enable interactive mode: choose which sections will be launched and see all available settings
  -o, --one_subject\t\t: only one subject is processed\n"
@@ -38,6 +40,11 @@ repeat=true
 # max value: 1200
 volumes=400
 
+# variables for filtering
+TR=0.782
+hp_cutoff=0.009
+lp_cutoff=0.08
+
 # default value, so every section is executed
 flag=true
 
@@ -59,6 +66,14 @@ while [[ "$1" != "" ]]; do
 		-v | --volumes )
 			shift
 			volumes=$1
+			;;
+		-lp | --lp_cutoff )
+			shift
+			lp_cutoff=$1
+			;;
+		-hp | --hp_cutoff )
+			shift
+			hp_cutoff=$1
 			;;
 		-o | --one_subject )
 			repeat=false
@@ -86,7 +101,7 @@ if [[ "$interactive" == true ]]; then
 	question "should I set up Data folder?"
 fi
 
-if [[ "$flag" == true ]]; then
+if [[ "$flag" == true || "$interactive" == false ]]; then
 	# variable for storing the previous and the current subject checked
 	current=""
 	prev=""
@@ -156,7 +171,7 @@ for subject in "$PATH2DATA"/*; do
 	mkdir -p $subject/results
 
 	# if SIGINT or SIGTERM is received, results folder is renamed before exiting
-	trap "mv -f $subject/results $subject/res_interrupted$$; echo ' pipeline interrupted, results name changed in res_interrupted$$'; exit" SIGINT SIGTERM
+	trap "mv -f $subject/results $subject/results_interrupted$$; echo ' pipeline interrupted, results name changed in results_interrupted$$'; exit" SIGINT SIGTERM
 
 	# saving the path for each file that will be used
 	SBRef_dc_T1w="$subject/${id}_3T_rfMRI_REST1_preproc/$id/T1w/Results/rfMRI_REST1_LR/SBRef_dc.nii.gz"
@@ -164,6 +179,7 @@ for subject in "$PATH2DATA"/*; do
 	SBRef_dc="$subject/${id}_3T_rfMRI_REST1_preproc/$id/MNINonLinear/Results/rfMRI_REST1_LR/SBRef_dc.nii.gz"
 	T1w_acpc_dc_restore="$subject/${id}_3T_Structural_preproc/$id/T1w/T1w_acpc_dc_restore.nii.gz"
 	rfMRI_REST1_LR="$subject/${id}_3T_rfMRI_REST1_preproc/$id/MNINonLinear/Results/rfMRI_REST1_LR/rfMRI_REST1_LR.nii.gz"
+	aparcPlusaseg="$subject/${id}_3T_Structural_preproc/${id}/T1w/aparc+aseg.nii.gz"
 
 	# INTERACTIVE : First section
 	if [[ "$interactive" == true ]]; then
@@ -298,22 +314,22 @@ for subject in "$PATH2DATA"/*; do
 
 	if [[ "$flag" == true ]]; then
 
-		#remove first 20 lines from Movement_Regressors.txt
+		# remove first 20 lines from Movement_Regressors.txt
 		sed '1,20d' "$subject/${id}_3T_rfMRI_REST1_preproc/$id/MNINonLinear/Results/rfMRI_REST1_LR/Movement_Regressors.txt" > $PATH2RES/Movement_Regressors_1180.txt
 		
-		#copy matlab script in resources folder
+		# copy matlab script in resources folder
 		cp regressors.m $PATH2RES/regressors.m
 
-		#with matlab
-		#this script removes mean from every column and adds CSf and WM columns
-		#matlab -nodisplay -nosplash -nodesktop -r "run('$PATH2RES/regressors.m');exit;" | tail -n +11
+		# with matlab
+		# this script removes mean from every column and adds CSf and WM columns
+		# matlab -nodisplay -nosplash -nodesktop -r "run('$PATH2RES/regressors.m');exit;" | tail -n +11
 		printf "\nremoving mean from regressors with regressors.m\n"
 		matlab -nodisplay -nosplash -nodesktop -r "cd('$PATH2RES'); regressors($volumes);exit" | tail -n +11
 
 		# Use the Text2Vest tool, bundled with FSL, to convert the data into the format used by FSL
 		Text2Vest $PATH2RES/Regressors.txt $PATH2RES/design.mat
 		
-		#fsl_glm, applying general linear model
+		# fsl_glm, applying general linear model
 		echo "fsl_glm -i $PATH2RES/rfMRI_REST1_LR_${volumes}.nii.gz -d  $PATH2RES/design.mat -o $PATH2RES/betas --out_res=$PATH2RES/rfMRI_REST1_LR_${volumes}_reg.nii.gz"
 		fsl_glm -i $PATH2RES/rfMRI_REST1_LR_${volumes}.nii.gz -d  $PATH2RES/design.mat -o $PATH2RES/betas --out_res=$PATH2RES/rfMRI_REST1_LR_${volumes}_reg.nii.gz
 	fi
@@ -327,10 +343,20 @@ for subject in "$PATH2DATA"/*; do
 
 		# Implementing Band Pass filter 0.009-0.08Hz
 
-		TR=0.782
-		hp_cutoff=0.009
-		lp_cutoff=0.08
+		# INTERACTIVE : filter frequencies
+		if [[ "$interactive" == true ]]; then
+			question "hp_cutoff = ${hp_cutoff}Hz, lp_cutoff = ${lp_cutoff}Hz, do you want to change the values (negative value = ignore filter)?"
+		fi
+
+		if [[ "$flag" == true && "$interactive" == true ]]; then
+			read -p "hp_cutoff= " ans
+			hp_cutoff=$ans
+			read -p "lp_cutoff= " ans
+			lp_cutoff=$ans
+		fi
 		
+		printf "\n filtering with hp_cutoff = ${hp_cutoff}Hz, lp_cutoff = ${lp_cutoff}Hz\n"
+
 		# sigma = 1/(2*TR*cutoff_in_hz), obtained with bc
 		hp_sigma=$( bc <<< "scale=8; 1/(2 * $TR * $hp_cutoff)" )
 		# bash doesn't handle float numbers, so I have to add 0 to values < 1
@@ -344,25 +370,60 @@ for subject in "$PATH2DATA"/*; do
 			lp_sigma="0$lp_sigma" 
 		fi
 
-		#removing Tmean from rfMRI
+		# extracting Tmean from rfMRI
 		printf "\nfslmaths $PATH2RES/rfMRI_REST1_LR_${volumes}_reg.nii.gz -Tmean $PATH2RES/rfMRI_REST1_LR_${volumes}_Tmean.nii.gz\n"
 		fslmaths $PATH2RES/rfMRI_REST1_LR_${volumes}_reg.nii.gz -Tmean $PATH2RES/rfMRI_REST1_LR_${volumes}_Tmean.nii.gz
 
-		# Obtaining Tmean file (Tmean = fmri - fmri_noTmean)
-		printf "\nfslmaths $PATH2RES/rfMRI_REST1_LR_${volumes}_reg.nii.gz -sub $PATH2RES/rfMRI_REST1_LR_${volumes}_Tmean.nii.gz $PATH2RES/rfMRI_REST1_LR_${volumes}_noTmean.nii.gz\n"
-		fslmaths $PATH2RES/rfMRI_REST1_LR_${volumes}_reg.nii.gz -sub $PATH2RES/rfMRI_REST1_LR_${volumes}_Tmean.nii.gz $PATH2RES/rfMRI_REST1_LR_${volumes}_noTmean.nii.gz
-
-		#Filtering rfMRI
+		# Filtering rfMRI (fslmaths removes Tmean before filtering)
 		printf "\nfslmaths $PATH2RES/rfMRI_REST1_LR_${volumes}_noTmean.nii.gz -bptf $hp_sigma $lp_sigma $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered_noTmean.nii.gz\n"
-		fslmaths $PATH2RES/rfMRI_REST1_LR_${volumes}_noTmean.nii.gz -bptf $hp_sigma $lp_sigma $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered_noTmean.nii.gz
+		fslmaths $PATH2RES/rfMRI_REST1_LR_${volumes}_reg.nii.gz -bptf $hp_sigma $lp_sigma $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered_noTmean.nii.gz
 
 		# adding mean to filtered rfMRI
 		printf "\nfslmaths $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered_noTmean.nii.gz -add $PATH2RES/rfMRI_REST1_LR_${volumes}_Tmean.nii.gz $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz\n"
 		fslmaths $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered_noTmean.nii.gz -add $PATH2RES/rfMRI_REST1_LR_${volumes}_Tmean.nii.gz $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz
 	fi
 
-	if [[ "$repeat" == false ]]; then
-		break
+	#INTERACTIVE : 5rd section
+	if [[ "$interactive" == true ]]; then
+		question "$id : start 5th section - clustering?"
 	fi
 
+	if [[ "$flag" == true ]]; then
+
+		#registering atlas aparc+aseg from T1w to rfmri with T1w207fmri.mat
+		printf "\nflirt -in $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz -applyxfm -init $PATH2RES/T1w207fmri.mat -out $PATH2RES/T1w_brain2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz\n"
+		flirt -in $aparcPlusaseg -applyxfm -init $PATH2RES/T1w207fmri.mat -out $PATH2RES/aparc+aseg2fmri.nii.gz -paddingsize 0.0 -interp nearestneighbour -ref $PATH2RES/SBRef_dc_brain.nii.gz
+
+
+		# extract 1 volume from rfMRI file to create binary mask
+		printf "\n$PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz $PATH2RES/rfMRI_REST1_LR_1_filtered.nii.gz 0 1\n"
+		fslroi $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz $PATH2RES/rfMRI_REST1_LR_1_filtered.nii.gz 0 1
+
+		# Creating a binary mask for the standard MNI
+		printf "\nfslmaths $PATH2RES/rfMRI_REST1_LR_1_filtered.nii.gz -bin -thr 0 $PATH2RES/rfMRI_REST1_LR_bin.nii.gz\n"
+		fslmaths $PATH2RES/rfMRI_REST1_LR_1_filtered.nii.gz -bin -thr 0 $PATH2RES/rfMRI_REST1_LR_bin.nii.gz
+		echo done
+
+		# Applying a binary mask
+		printf "\nfslmaths $PATH2RES/aparc+aseg2fmri.nii.gz -mas $PATH2RES/rfMRI_REST1_LR_bin.nii.gz $PATH2RES/aparc+aseg2fmri_mask.nii.gz\n"
+		fslmaths $PATH2RES/aparc+aseg2fmri.nii.gz -mas $PATH2RES/rfMRI_REST1_LR_bin.nii.gz $PATH2RES/aparc+aseg2fmri_mask.nii.gz
+
+		# copying matlab script in resources folder
+		cp clusters.m $PATH2RES/clusters.m
+		cp label_conversion.csv $PATH2RES/label_conversion.csv
+
+		# this matlab script converts current labels with fs_standard.txt labels and removes unused regins
+		# open clusters.m for more details
+		printf "\nrunning clusters.m\n"
+		matlab -nodisplay -nosplash -nodesktop -r "cd('$PATH2RES'); clusters('aparc+aseg2fmri_mask.nii.gz');exit" | tail -n +11
+
+		# meants for each roi
+		printf "\nfslmeants -i $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz -o $PATH2RES/meants.txt --label=$PATH2RES/atlas_84regions.nii.gz\n"
+		fslmeants -i $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz -o $PATH2RES/meants.txt --label=$PATH2RES/atlas_84regions.nii.gz
+
+		printf "\nsubject $id : completed!\n"
+		if [[ "$repeat" == false ]]; then
+			break
+		fi
+	fi
 done
