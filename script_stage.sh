@@ -188,6 +188,8 @@ for subject in "$PATH2DATA"/*; do
 
 	if [[ "$flag" == true ]]; then
 
+		echo "subject ${id}: started"
+
 		# removing first 20 volumes, to remove instrumental error
 		printf "\nfslroi $rfMRI_REST1_LR $PATH2RES/rfMRI_REST1_LR_1180.nii.gz 20 1180\n" 
 		
@@ -361,13 +363,17 @@ for subject in "$PATH2DATA"/*; do
 		hp_sigma=$( bc <<< "scale=8; 1/(2 * $TR * $hp_cutoff)" )
 		# bash doesn't handle float numbers, so I have to add 0 to values < 1
 		if [[ $hp_sigma == .* ]]; then
-			hp_sigma="0$hp_sigma" 
+			hp_sigma="0$hp_sigma"
+		elif [[ $hp_sigma == -* ]]; then
+			hp_sigma="-1"
 		fi
 		
 		# same for low pass filter
 		lp_sigma=$( bc <<< "scale=8; 1/(2 * $TR * $lp_cutoff)" )
 		if [[ $lp_sigma == .* ]]; then
-			lp_sigma="0$lp_sigma" 
+			lp_sigma="0$lp_sigma"
+		elif [[ $lp_sigma == -* ]]; then
+			lp_sigma="-1"
 		fi
 
 		# extracting Tmean from rfMRI
@@ -419,7 +425,7 @@ for subject in "$PATH2DATA"/*; do
 
 		# meants for each roi
 		printf "\nfslmeants -i $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz -o $PATH2RES/meants.txt --label=$PATH2RES/atlas_84regions.nii.gz\n"
-		fslmeants -i $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz -o $PATH2RES/meants.txt --label=$PATH2RES/atlas_84regions.nii.gz
+		fslmeants -i $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz -o $PATH2RES/${id}_meants.txt --label=$PATH2RES/atlas_84regions.nii.gz
 
 		printf "\nsubject $id : completed!\n"
 		if [[ "$repeat" == false ]]; then
