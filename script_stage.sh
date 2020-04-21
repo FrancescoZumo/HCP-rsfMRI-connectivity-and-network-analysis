@@ -320,7 +320,7 @@ for subject in "$PATH2DATA"/*; do
 		sed '1,20d' "$subject/${id}_3T_rfMRI_REST1_preproc/$id/MNINonLinear/Results/rfMRI_REST1_LR/Movement_Regressors.txt" > $PATH2RES/Movement_Regressors_1180.txt
 		
 		# copy matlab script in resources folder
-		cp regressors.m $PATH2RES/regressors.m
+		cp resources/regressors.m $PATH2RES/regressors.m
 
 		# with matlab
 		# this script removes mean from every column and adds CSf and WM columns
@@ -415,17 +415,33 @@ for subject in "$PATH2DATA"/*; do
 		fslmaths $PATH2RES/aparc+aseg2fmri.nii.gz -mas $PATH2RES/rfMRI_REST1_LR_bin.nii.gz $PATH2RES/aparc+aseg2fmri_mask.nii.gz
 
 		# copying matlab script in resources folder
-		cp clusters.m $PATH2RES/clusters.m
-		cp label_conversion.csv $PATH2RES/label_conversion.csv
+		cp resources/label_converter.m $PATH2RES/label_converter.m
+		cp resources/84regions_conversion.csv $PATH2RES/84regions_conversion.csv
 
 		# this matlab script converts current labels with fs_standard.txt labels and removes unused regins
 		# open clusters.m for more details
 		printf "\nrunning clusters.m\n"
-		matlab -nodisplay -nosplash -nodesktop -r "cd('$PATH2RES'); clusters('aparc+aseg2fmri_mask.nii.gz');exit" | tail -n +11
+		# usage: label_converter(input_name, conversion_table, output_name)
+		matlab -nodisplay -nosplash -nodesktop -r "cd('$PATH2RES'); label_converter('aparc+aseg2fmri_mask.nii.gz', '84regions_conversion.csv', 'atlas_84regions.nii.gz');exit" | tail -n +11
 
 		# meants for each roi
 		printf "\nfslmeants -i $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz -o $PATH2RES/meants.txt --label=$PATH2RES/atlas_84regions.nii.gz\n"
-		fslmeants -i $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz -o $PATH2RES/${id}_meants.txt --label=$PATH2RES/atlas_84regions.nii.gz
+		fslmeants -i $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz -o $PATH2RES/meants.txt --label=$PATH2RES/atlas_84regions.nii.gz
+
+		# copying reorganization files in resources folder
+		cp resources/lobe_reorganization.txt $PATH2RES/lobe_reorganization.txt
+		cp resources/Schaefer_reorganization.txt $PATH2RES/Schaefer_reorganization.txt
+		cp resources/reorganize.m $PATH2RES/reorganize.m
+
+		# Anatomical reorganization
+		matlab -nodisplay -nosplash -nodesktop -r "cd('$PATH2RES'); reorganize('meants.txt', 'lobe_reorganization.txt', 'meants_lobes.txt');exit" | tail -n +11
+
+		# Functional reorganization, according to Schaefer2018
+		matlab -nodisplay -nosplash -nodesktop -r "cd('$PATH2RES'); reorganize('meants.txt', 'Schaefer_reorganization.txt', 'meants_Schaefer.txt');exit" | tail -n +11
+
+		# rename final files
+		mv $PATH2RES/meants_lobes.txt $PATH2RES/${id}_lobes.txt
+		mv $PATH2RES/meants_Schaefer.txt $PATH2RES/${id}_Schaefer.txt
 
 		printf "\nsubject $id : completed!\n"
 		if [[ "$repeat" == false ]]; then
