@@ -4,13 +4,18 @@ usage (){
 	printf "\nUsage: ./script [options]
 
 Optional arguments
- -p <path>, --path <path>\t: set a different path to data folder (current path: $PATH2DATA)
+ -p <path>, --path <path>\t: set a different path to data folder (current path: $PATH2DATA). If set as empty string, current folder will be used.
  -v <value>, --volumes <value>\t: number of volumes processed (current: $volumes, max: 1180)
  -hp <value>, --hp_cutoff <value>\t: high pass filter cutoff (default: ${hp_cutoff}Hz)
  -lp <value>, --lp_cutoff <value>\t: low pass filter cutoff (default: ${lp_cutoff}Hz)
  -h, --help\t\t\t: display this page
  -i, --interactive\t\t: enable interactive mode: choose which sections will be launched and see all available settings
- -o, --one_subject\t\t: only one subject is processed\n"
+ -o, --one_subject\t\t: only one subject is processed\n
+ 
+ System Requirements:
+ - matlab (with symbolic link created) with the following toolbox: Tools for NIfTI and ANALYZE image
+ - 8GB RAM minimum
+ - additional 2.5 GB of space will be needed for each subject processed"
 }
 question (){
 	read -p "$1 [Y/n] " answer
@@ -96,6 +101,11 @@ if [[ "$flag" == false ]]; then
 	read -p "new path: " PATH2DATA
 fi
 
+# this condition makes empty string (--> stay in current directory) work
+if [[ "$PATH2DATA" == "" ]]; then
+	PATH2DATA="../${PWD##*/}"
+fi
+
 # INTERACTIVE : setting up Data folder
 if [[ "$interactive" == true ]]; then
 	question "should I set up Data folder?"
@@ -161,9 +171,15 @@ for subject in "$PATH2DATA"/*; do
 	fi
 
 	# check if subject already has results
-	if [[ -d "$subject/results" && "$interactive" == false ]]; then
-		echo "${id}'s data has been already processed"
-		continue
+	if [[ -f "${subject}/results/${id}_Schaefer.txt" ]]; then
+		if [[ "$interactive" == false ]]; then
+			echo "${id} has been already processed"
+			continue
+		else
+			printf "\n\tWarning: ${id} has been already processed\n"
+		fi
+	else
+		printf "\n\t${id} can be processed\n"
 	fi
 	# creating results folder
 	PATH2RES="$subject/results"
@@ -357,7 +373,7 @@ for subject in "$PATH2DATA"/*; do
 			lp_cutoff=$ans
 		fi
 		
-		printf "\n filtering with hp_cutoff = ${hp_cutoff}Hz, lp_cutoff = ${lp_cutoff}Hz\n"
+		printf "\n\tfiltering with hp_cutoff = ${hp_cutoff}Hz, lp_cutoff = ${lp_cutoff}Hz\n"
 
 		# sigma = 1/(2*TR*cutoff_in_hz), obtained with bc
 		hp_sigma=$( bc <<< "scale=8; 1/(2 * $TR * $hp_cutoff)" )
@@ -402,7 +418,7 @@ for subject in "$PATH2DATA"/*; do
 
 
 		# extract 1 volume from rfMRI file to create binary mask
-		printf "\n$PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz $PATH2RES/rfMRI_REST1_LR_1_filtered.nii.gz 0 1\n"
+		printf "\nfslroi $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz $PATH2RES/rfMRI_REST1_LR_1_filtered.nii.gz 0 1\n"
 		fslroi $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz $PATH2RES/rfMRI_REST1_LR_1_filtered.nii.gz 0 1
 
 		# Creating a binary mask for the standard MNI
@@ -429,14 +445,30 @@ for subject in "$PATH2DATA"/*; do
 		fslmeants -i $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz -o $PATH2RES/meants.txt --label=$PATH2RES/atlas_84regions.nii.gz
 
 		# copying reorganization files in resources folder
-		cp resources/lobe_reorganization.txt $PATH2RES/lobe_reorganization.txt
-		cp resources/Schaefer_reorganization.txt $PATH2RES/Schaefer_reorganization.txt
+		cp resources/Lobes/lobe_reorganization.txt $PATH2RES/lobe_reorganization.txt
 		cp resources/reorganize.m $PATH2RES/reorganize.m
 
 		# Anatomical reorganization
+		# regions have been divided in lobes, according to https://surfer.nmr.mgh.harvard.edu/fswiki/CorticalParcellation
+		printf "\nrunning reorganize.m for anatomical reorganization\n"
 		matlab -nodisplay -nosplash -nodesktop -r "cd('$PATH2RES'); reorganize('meants.txt', 'lobe_reorganization.txt', 'meants_lobes.txt');exit" | tail -n +11
 
 		# Functional reorganization, according to Schaefer2018
+
+		# copy current atlas to Schaefer folder
+		cp $PATH2RES/atlas_84regions.nii.gz resources/Schaefer/atlas_84regions.nii.gz
+
+		printf "\nrunning Schaefer_reorganization.m to obtain Schaefer_reorganization.txt\n"
+		matlab -nodisplay -nosplash -nodesktop -r "run('resources/Schaefer/Schaefer_reorganization.m');exit" | tail -n +11
+
+		# rename reorganization results for future analysis
+		mv resources/Schaefer/Schaefer_reorganization.txt resources/Schaefer/Schaefer_reorganization_${id}.txt
+		mv resources/Schaefer/Schaefer_full_results.txt resources/Schaefer/Schaefer_full_results_${id}.txt
+
+		# copying Schaefer_reorganization to results folder, for its application
+		cp resources/Schaefer/Schaefer_reorganization_${id}.txt $PATH2RES/Schaefer_reorganization.txt
+
+		printf "\nrunning reorganize.m for functional reorganization\n"
 		matlab -nodisplay -nosplash -nodesktop -r "cd('$PATH2RES'); reorganize('meants.txt', 'Schaefer_reorganization.txt', 'meants_Schaefer.txt');exit" | tail -n +11
 
 		# rename final files
@@ -444,8 +476,9 @@ for subject in "$PATH2DATA"/*; do
 		mv $PATH2RES/meants_Schaefer.txt $PATH2RES/${id}_Schaefer.txt
 
 		printf "\nsubject $id : completed!\n"
-		if [[ "$repeat" == false ]]; then
-			break
-		fi
+	fi
+	
+	if [[ "$repeat" == false ]]; then
+		break
 	fi
 done
