@@ -33,7 +33,7 @@ for roi = 1:84
     % single_roi is created as a copy of Schaefer_atlas
     roi_atlas = hcp_atlas;
     
-    % in this for cycle every voxel not belonging ro roi is removed
+    % in this for cycle every voxel not belonging to roi is removed
     for voxel = 1:numel(roi_atlas)
         if roi_atlas(voxel) ~= roi
            % if voxel is not inside roi, remove it (set to 0 its value)
@@ -94,6 +94,11 @@ for i = 1:84
         Schaefer_full_results(i, 17) = y;
     else
         Schaefer_full_results(i, 17) = 0;
+    end
+    
+    % subcortical regions are automatically removed from networks
+    if i >= 35 && i <= 49
+        Schaefer_full_results(i, 16:17) = 0;
     end
 end
 

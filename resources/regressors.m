@@ -1,8 +1,8 @@
 function regressors(volumes)
     %% load 3 files containing Movement Regressors, CSF and WM mean signal  
-    load('Movement_Regressors_1180.txt');
-    load('CSF_meansignal.txt');
-    load('WM_meansignal.txt');
+    Movement_Regressors_1180 = load('Movement_Regressors_1180.txt');
+    CSF_meansignal = load('CSF_meansignal.txt');
+    WM_meansignal = load('WM_meansignal.txt');
 
     %% create the merged matrix
     R = zeros(volumes,14);

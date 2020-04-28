@@ -178,7 +178,7 @@ for subject in "$PATH2DATA"/*; do
 		else
 			printf "\n\tWarning: ${id} has been already processed\n"
 		fi
-	else
+	elif [[ "$interactive" == true ]]; then
 		printf "\n\t${id} can be processed\n"
 	fi
 	# creating results folder
