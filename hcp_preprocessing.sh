@@ -1,21 +1,24 @@
 #!/bin/bash
 
 usage (){
-	printf "\nUsage: ./script [options]
+	printf "\n Usage: ./script [options]
 
-Optional arguments
+ Optional arguments
  -p <path>, --path <path>\t: set a different path to data folder (current path: $PATH2DATA). If set as empty string, current folder will be used.
  -v <value>, --volumes <value>\t: number of volumes processed (current: $volumes, max: 1180)
- -hp <value>, --hp_cutoff <value>\t: high pass filter cutoff (default: ${hp_cutoff}Hz)
- -lp <value>, --lp_cutoff <value>\t: low pass filter cutoff (default: ${lp_cutoff}Hz)
+ -hp <value>, --hp_cutoff <value> : high pass filter cutoff (default: ${hp_cutoff}Hz)
+ -lp <value>, --lp_cutoff <value> : low pass filter cutoff (default: ${lp_cutoff}Hz)
  -h, --help\t\t\t: display this page
  -i, --interactive\t\t: enable interactive mode: choose which sections will be launched and see all available settings
- -o, --one_subject\t\t: only one subject is processed\n
- 
+ -o, --one_subject\t\t: only one subject is processed
+ -c, --clustering\t\t: only section 5: clustering will be performed for each subject
+ -ar <filename>, --alt_reorganization <filename> : (Automatically enables -c option) meants.txt is reorganized with external file. You can just import $id folder containing meants.txt instead of full subject folder
+
  System Requirements:
+ - fsl
  - matlab (with symbolic link created) with the following toolbox: Tools for NIfTI and ANALYZE image
  - 8GB RAM minimum
- - additional 2.5 GB of space will be needed for each subject processed"
+ - additional 2.5 GB of space will be needed for each subject processed\n"
 }
 question (){
 	read -p "$1 [Y/n] " answer
@@ -34,6 +37,7 @@ question (){
 }
 
 # Default path to HCP data 
+#PATH2DATA="/media/francescozumo/Verbatim"
 PATH2DATA="../Data"
 
 # will be set true if -i argument is used
@@ -52,6 +56,13 @@ lp_cutoff=0.08
 
 # default value, so every section is executed
 flag=true
+
+# if true, only section 5 will be launched for each subject
+clustering_only=false
+
+#if true, section 5 will only apply an external reorganization
+alt_reorganization=false
+ext_reorganization=""
 
 # optional arguments
 while [[ "$1" != "" ]]; do
@@ -82,6 +93,20 @@ while [[ "$1" != "" ]]; do
 			;;
 		-o | --one_subject )
 			repeat=false
+			;;
+		-c | --clustering )
+			clustering_only=true
+			;;
+		-ar | --alt_reorganization )
+			clustering_only=true
+			alt_reorganization=true
+			shift
+			ext_reorganization=$1
+			# check if a valid name was given
+			if ! [[ "$ext_reorganization" == *.txt ]]; then
+				printf "Usage: -ar <filename>, '$ext_reorganization' is not a valid name,\ncheck help section for full Usage. Abort\n"
+				exit
+			fi
 			;;
 		* )
 			echo "Unknown option, Abort"
@@ -150,7 +175,7 @@ fi
 
 # INTERACTIVE : execute code for only one subject
 if [[ "$interactive" == true ]]; then
-	question "should I execute code for all subjects?"
+	question "do you want to execute code for all subjects?"
 fi
 
 if [[ "$flag" == true && "$repeat" == true ]]; then
@@ -158,8 +183,6 @@ if [[ "$flag" == true && "$repeat" == true ]]; then
 else
 	repeat=false
 fi
-
-# commenta molto tutto il codice, spiega parametri scelti x ogni comando e perché lo stai facendo
 
 # repeating all processing for each subject found in Data folder
 for subject in "$PATH2DATA"/*; do
@@ -170,21 +193,36 @@ for subject in "$PATH2DATA"/*; do
 		continue
 	fi
 
-	# check if subject already has results
-	if [[ -f "${subject}/results/${id}_Schaefer.txt" ]]; then
-		if [[ "$interactive" == false ]]; then
+	# check if subject already has results (ignores condition if -c or -ar was used)
+	if [[ -f "${subject}/results/${id}/${id}_Schaefer.txt" ]]; then
+		if [[ "$interactive" == false && "$clustering_only" == false && "$alt_reorganization" == false ]]; then
 			echo "${id} has been already processed"
 			continue
-		else
+		elif [[ "$clustering_only" == false && "$alt_reorganization" == false ]]; then
 			printf "\n\tWarning: ${id} has been already processed\n"
 		fi
 	elif [[ "$interactive" == true ]]; then
 		printf "\n\t${id} can be processed\n"
 	fi
-	# creating results folder
-	PATH2RES="$subject/results"
-	rfMRI=$id_
-	mkdir -p $subject/results
+
+	# if -ar is selected, more options are available
+	if [[ "$alt_reorganization" == true ]]; then
+		# if only $id folder containing meants.txt was imported, PATH2RES is modified
+		if [[ -f "${subject}/meants.txt" ]]; then
+			PATH2RES="$subject"
+		# if the full subject, with all results, was imported, PATH2RES is modified
+		elif [[ -f "${subject}/results/${id}/meants.txt" ]]; then
+			PATH2RES="$subject/results/${id}"
+		# if subject has not been processed, -ar cannot be performed
+		else
+			printf "Warning! subject $id hasn't already been processed, an external reorganization cannot be applied, moving to next subject...\n"
+			continue
+		fi
+	else
+		# creating results folder
+		PATH2RES="$subject/results"
+		mkdir -p $subject/results
+	fi
 
 	# if SIGINT or SIGTERM is received, results folder is renamed before exiting
 	trap "mv -f $subject/results $subject/results_interrupted$$; echo ' pipeline interrupted, results name changed in results_interrupted$$'; exit" SIGINT SIGTERM
@@ -202,7 +240,7 @@ for subject in "$PATH2DATA"/*; do
 		question "$id : start 1st section - creating frmi2T1W.mat ?"
 	fi
 
-	if [[ "$flag" == true ]]; then
+	if [[ "$flag" == true && "$clustering_only" == false ]]; then
 
 		echo "subject ${id}: started"
 
@@ -266,7 +304,7 @@ for subject in "$PATH2DATA"/*; do
 		question "$id : start 2nd section - obtaining CSF/WM/GM_meansignal?"
 	fi
 
-	if [[ "$flag" == true ]]; then
+	if [[ "$flag" == true && "$clustering_only" == false ]]; then
 		# FAST 
 		# (FMRIB's Automated Segmentation Tool) segments a 3D image of the brain into three dfferent tissue types (Grey Matter, White Matter, CSF)
 		printf "\nfast $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz\n"
@@ -330,7 +368,7 @@ for subject in "$PATH2DATA"/*; do
 		question "$id : start 3rd section - noisance regression?"
 	fi
 
-	if [[ "$flag" == true ]]; then
+	if [[ "$flag" == true && "$clustering_only" == false ]]; then
 
 		# remove first 20 lines from Movement_Regressors.txt
 		sed '1,20d' "$subject/${id}_3T_rfMRI_REST1_preproc/$id/MNINonLinear/Results/rfMRI_REST1_LR/Movement_Regressors.txt" > $PATH2RES/Movement_Regressors_1180.txt
@@ -343,6 +381,9 @@ for subject in "$PATH2DATA"/*; do
 		# matlab -nodisplay -nosplash -nodesktop -r "run('$PATH2RES/regressors.m');exit;" | tail -n +11
 		printf "\nremoving mean from regressors with regressors.m\n"
 		matlab -nodisplay -nosplash -nodesktop -r "cd('$PATH2RES'); regressors($volumes);exit" | tail -n +11
+
+		# remove matlab script
+		rm $PATH2RES/regressors.m
 
 		# Use the Text2Vest tool, bundled with FSL, to convert the data into the format used by FSL
 		Text2Vest $PATH2RES/Regressors.txt $PATH2RES/design.mat
@@ -357,7 +398,7 @@ for subject in "$PATH2DATA"/*; do
 		question "$id : start 4th section - Filtering?"
 	fi
 
-	if [[ "$flag" == true ]]; then
+	if [[ "$flag" == true && "$clustering_only" == false ]]; then
 
 		# Implementing Band Pass filter 0.009-0.08Hz
 
@@ -405,77 +446,110 @@ for subject in "$PATH2DATA"/*; do
 		fslmaths $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered_noTmean.nii.gz -add $PATH2RES/rfMRI_REST1_LR_${volumes}_Tmean.nii.gz $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz
 	fi
 
-	#INTERACTIVE : 5rd section
+	#INTERACTIVE : 5th section
 	if [[ "$interactive" == true ]]; then
 		question "$id : start 5th section - clustering?"
 	fi
 
 	if [[ "$flag" == true ]]; then
 
-		#registering atlas aparc+aseg from T1w to rfmri with T1w207fmri.mat
-		printf "\nflirt -in $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz -applyxfm -init $PATH2RES/T1w207fmri.mat -out $PATH2RES/T1w_brain2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz\n"
-		flirt -in $aparcPlusaseg -applyxfm -init $PATH2RES/T1w207fmri.mat -out $PATH2RES/aparc+aseg2fmri.nii.gz -paddingsize 0.0 -interp nearestneighbour -ref $PATH2RES/SBRef_dc_brain.nii.gz
+		# if -ar was used, this section is ignored
+		if [[ "$alt_reorganization" == false ]]; then
+			#registering atlas aparc+aseg from T1w to rfmri with T1w207fmri.mat
+			printf "\nflirt -in $PATH2RES/T1w_acpc_dc_restore_brain.nii.gz -applyxfm -init $PATH2RES/T1w207fmri.mat -out $PATH2RES/T1w_brain2fmri.nii.gz -paddingsize 0.0 -interp trilinear -ref $PATH2RES/SBRef_dc_brain.nii.gz\n"
+			flirt -in $aparcPlusaseg -applyxfm -init $PATH2RES/T1w207fmri.mat -out $PATH2RES/aparc+aseg2fmri.nii.gz -paddingsize 0.0 -interp nearestneighbour -ref $PATH2RES/SBRef_dc_brain.nii.gz
+
+			# extract 1 volume from rfMRI file to create binary mask
+			printf "\nfslroi $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz $PATH2RES/rfMRI_REST1_LR_1_filtered.nii.gz 0 1\n"
+			fslroi $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz $PATH2RES/rfMRI_REST1_LR_1_filtered.nii.gz 0 1
+
+			# Creating a binary mask for the standard MNI
+			printf "\nfslmaths $PATH2RES/rfMRI_REST1_LR_1_filtered.nii.gz -bin -thr 0 $PATH2RES/rfMRI_REST1_LR_bin.nii.gz\n"
+			fslmaths $PATH2RES/rfMRI_REST1_LR_1_filtered.nii.gz -bin -thr 0 $PATH2RES/rfMRI_REST1_LR_bin.nii.gz
+			echo done
+
+			# Applying a binary mask
+			printf "\nfslmaths $PATH2RES/aparc+aseg2fmri.nii.gz -mas $PATH2RES/rfMRI_REST1_LR_bin.nii.gz $PATH2RES/aparc+aseg2fmri_mask.nii.gz\n"
+			fslmaths $PATH2RES/aparc+aseg2fmri.nii.gz -mas $PATH2RES/rfMRI_REST1_LR_bin.nii.gz $PATH2RES/aparc+aseg2fmri_mask.nii.gz
+
+			# copying matlab script in resources folder
+			cp resources/label_converter.m $PATH2RES/label_converter.m
+			cp resources/84regions_conversion.csv $PATH2RES/84regions_conversion.csv
+
+			# this matlab script converts current labels with fs_standard.txt labels and removes unused regins
+			# open clusters.m for more details
+			printf "\nrunning clusters.m\n"
+			# usage: label_converter(input_name, conversion_table, output_name)
+			matlab -nodisplay -nosplash -nodesktop -r "cd('$PATH2RES'); label_converter('aparc+aseg2fmri_mask.nii.gz', '84regions_conversion.csv', 'atlas_84regions.nii.gz');exit" | tail -n +11
+
+			# remove files and script used
+			rm $PATH2RES/84regions_conversion.csv $PATH2RES/label_converter.m $PATH2RES/rfMRI_REST1_LR_bin.nii.gz $PATH2RES/rfMRI_REST1_LR_1_filtered.nii.gz
+
+			# meants for each roi
+			printf "\nfslmeants -i $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz -o $PATH2RES/meants.txt --label=$PATH2RES/atlas_84regions.nii.gz\n"
+			fslmeants -i $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz -o $PATH2RES/meants.txt --label=$PATH2RES/atlas_84regions.nii.gz
+
+			# copying reorganization files in resources folder
+			cp resources/Lobes/lobes_reorganization.txt $PATH2RES/lobes_reorganization.txt
+			cp resources/reorganize.m $PATH2RES/reorganize.m
+
+			# Anatomical reorganization
+			# regions have been divided in lobes, according to https://surfer.nmr.mgh.harvard.edu/fswiki/CorticalParcellation
+			printf "\nrunning reorganize.m for anatomical reorganization\n"
+			matlab -nodisplay -nosplash -nodesktop -r "cd('$PATH2RES'); reorganize('meants.txt', 'lobes_reorganization.txt', 'meants_lobes.txt');exit" | tail -n +11
 
 
-		# extract 1 volume from rfMRI file to create binary mask
-		printf "\nfslroi $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz $PATH2RES/rfMRI_REST1_LR_1_filtered.nii.gz 0 1\n"
-		fslroi $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz $PATH2RES/rfMRI_REST1_LR_1_filtered.nii.gz 0 1
+			# Functional reorganization, according to Schaefer2018
 
-		# Creating a binary mask for the standard MNI
-		printf "\nfslmaths $PATH2RES/rfMRI_REST1_LR_1_filtered.nii.gz -bin -thr 0 $PATH2RES/rfMRI_REST1_LR_bin.nii.gz\n"
-		fslmaths $PATH2RES/rfMRI_REST1_LR_1_filtered.nii.gz -bin -thr 0 $PATH2RES/rfMRI_REST1_LR_bin.nii.gz
-		echo done
+			# copy current atlas to Schaefer folder
+			cp $PATH2RES/atlas_84regions.nii.gz resources/Schaefer/atlas_84regions.nii.gz
 
-		# Applying a binary mask
-		printf "\nfslmaths $PATH2RES/aparc+aseg2fmri.nii.gz -mas $PATH2RES/rfMRI_REST1_LR_bin.nii.gz $PATH2RES/aparc+aseg2fmri_mask.nii.gz\n"
-		fslmaths $PATH2RES/aparc+aseg2fmri.nii.gz -mas $PATH2RES/rfMRI_REST1_LR_bin.nii.gz $PATH2RES/aparc+aseg2fmri_mask.nii.gz
+			printf "\nrunning Schaefer_reorganization.m to obtain Schaefer_reorganization.txt\n"
+			matlab -nodisplay -nosplash -nodesktop -r "run('resources/Schaefer/Schaefer_reorganization.m');exit" | tail -n +11
 
-		# copying matlab script in resources folder
-		cp resources/label_converter.m $PATH2RES/label_converter.m
-		cp resources/84regions_conversion.csv $PATH2RES/84regions_conversion.csv
+			# rename reorganization results for future analysis
+			mv resources/Schaefer/Schaefer_reorganization.txt resources/Schaefer/Schaefer_reorganization_${id}.txt
+			mv resources/Schaefer/Schaefer_full_results.txt resources/Schaefer/Schaefer_full_results_${id}.txt
 
-		# this matlab script converts current labels with fs_standard.txt labels and removes unused regins
-		# open clusters.m for more details
-		printf "\nrunning clusters.m\n"
-		# usage: label_converter(input_name, conversion_table, output_name)
-		matlab -nodisplay -nosplash -nodesktop -r "cd('$PATH2RES'); label_converter('aparc+aseg2fmri_mask.nii.gz', '84regions_conversion.csv', 'atlas_84regions.nii.gz');exit" | tail -n +11
+			# copying Schaefer_reorganization to results folder, for its application
+			cp resources/Schaefer/Schaefer_reorganization_${id}.txt $PATH2RES/Schaefer_reorganization.txt
 
-		# meants for each roi
-		printf "\nfslmeants -i $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz -o $PATH2RES/meants.txt --label=$PATH2RES/atlas_84regions.nii.gz\n"
-		fslmeants -i $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz -o $PATH2RES/meants.txt --label=$PATH2RES/atlas_84regions.nii.gz
+			printf "\nrunning reorganize.m for functional reorganization\n"
+			matlab -nodisplay -nosplash -nodesktop -r "cd('$PATH2RES'); reorganize('meants.txt', 'Schaefer_reorganization.txt', 'meants_Schaefer.txt');exit" | tail -n +11
 
-		# copying reorganization files in resources folder
-		cp resources/Lobes/lobe_reorganization.txt $PATH2RES/lobe_reorganization.txt
-		cp resources/reorganize.m $PATH2RES/reorganize.m
+			# remove used function and reorganizations.txt from $PATH2RES. Also atlas_84regions.nii.gz is removed from Schaefer folder
+			rm $PATH2RES/reorganize.m $PATH2RES/Schaefer_reorganization.txt $PATH2RES/lobes_reorganization.txt resources/Schaefer/atlas_84regions.nii.gz
 
-		# Anatomical reorganization
-		# regions have been divided in lobes, according to https://surfer.nmr.mgh.harvard.edu/fswiki/CorticalParcellation
-		printf "\nrunning reorganize.m for anatomical reorganization\n"
-		matlab -nodisplay -nosplash -nodesktop -r "cd('$PATH2RES'); reorganize('meants.txt', 'lobe_reorganization.txt', 'meants_lobes.txt');exit" | tail -n +11
+			# make directory with results for connectivity analysis
+			mkdir -p $PATH2RES/$id
 
-		# Functional reorganization, according to Schaefer2018
+			# rename final files and move to final folder
+			mv $PATH2RES/meants.txt $PATH2RES/${id}/meants.txt
+			mv $PATH2RES/meants_lobes.txt $PATH2RES/${id}/${id}_lobes.txt
+			mv $PATH2RES/meants_Schaefer.txt $PATH2RES/${id}/${id}_Schaefer.txt
+			mv resources/Schaefer/Schaefer_reorganization_${id}.txt $PATH2RES/${id}/Schaefer_reorganization_${id}.txt
+			mv resources/Schaefer/Schaefer_full_results_${id}.txt $PATH2RES/${id}/Schaefer_full_results_${id}.txt
+		fi
+		# if -ar was given, only this section will be used
+		if [[ "$alt_reorganization" == true ]]; then
 
-		# copy current atlas to Schaefer folder
-		cp $PATH2RES/atlas_84regions.nii.gz resources/Schaefer/atlas_84regions.nii.gz
+			printf "\nsubject $id : alternative_reorganization\n"
+			
+			# copy ext_reorganization and reorganize.m in working folder
+			cp resources/Schaefer/${ext_reorganization} $PATH2RES/ext_reorganization.txt
+			cp resources/reorganize.m $PATH2RES/reorganize.m
+			
+			echo "running reorganize.m to generate alternative reorganization from $ext_reorganization"
+			matlab -nodisplay -nosplash -nodesktop -r "cd('$PATH2RES'); reorganize('meants.txt', 'ext_reorganization.txt', 'meants_Schaefer.txt');exit" | tail -n +11
+			
+			# remove used files
+			rm $PATH2RES/reorganize.m $PATH2RES/ext_reorganization.txt
+			
+			# save result with subject id
+			mv $PATH2RES/meants_Schaefer.txt $PATH2RES/${id}_alt_Schaefer.txt
+		fi
 
-		printf "\nrunning Schaefer_reorganization.m to obtain Schaefer_reorganization.txt\n"
-		matlab -nodisplay -nosplash -nodesktop -r "run('resources/Schaefer/Schaefer_reorganization.m');exit" | tail -n +11
-
-		# rename reorganization results for future analysis
-		mv resources/Schaefer/Schaefer_reorganization.txt resources/Schaefer/Schaefer_reorganization_${id}.txt
-		mv resources/Schaefer/Schaefer_full_results.txt resources/Schaefer/Schaefer_full_results_${id}.txt
-
-		# copying Schaefer_reorganization to results folder, for its application
-		cp resources/Schaefer/Schaefer_reorganization_${id}.txt $PATH2RES/Schaefer_reorganization.txt
-
-		printf "\nrunning reorganize.m for functional reorganization\n"
-		matlab -nodisplay -nosplash -nodesktop -r "cd('$PATH2RES'); reorganize('meants.txt', 'Schaefer_reorganization.txt', 'meants_Schaefer.txt');exit" | tail -n +11
-
-		# rename final files
-		mv $PATH2RES/meants_lobes.txt $PATH2RES/${id}_lobes.txt
-		mv $PATH2RES/meants_Schaefer.txt $PATH2RES/${id}_Schaefer.txt
-
-		printf "\nsubject $id : completed!\n"
+		printf "subject $id : completed!\n"
 	fi
 	
 	if [[ "$repeat" == false ]]; then
