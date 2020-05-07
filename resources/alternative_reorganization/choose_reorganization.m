@@ -1,6 +1,7 @@
 function choose_reorganization(input_name, networks_name, reorganization_name)
     
 %% CHOOSE REORGANIZATION
+
     % load input file
     input = load(input_name);
     
@@ -9,7 +10,17 @@ function choose_reorganization(input_name, networks_name, reorganization_name)
     
     % for each row, choose most frequent number (mode)
     for i = 1:numel(input(:, 1))
-        R(i) = mode(input(i, :));
+        % for cortical regions, the same network has to be chosen for both
+        % hemispheres
+        if i <= 35
+            T = [input(i, :), input(i + 49, :)];
+            R(i) = mode(T);
+        elseif i <= 49
+            R(i) = mode(input(i, :));
+        else
+            T = [input(i, :), input(i - 49, :)];
+            R(i) = mode(T);
+        end
     end
     
     % save output in file with output_name

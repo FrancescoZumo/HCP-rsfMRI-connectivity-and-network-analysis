@@ -12,7 +12,7 @@ usage (){
  -i, --interactive\t\t: enable interactive mode: choose which sections will be launched and see all available settings
  -o, --one_subject\t\t: only one subject is processed
  -c, --clustering\t\t: only section 5: clustering will be performed for each subject
- -ar <filename>, --alt_reorganization <filename> : (Automatically enables -c option) meants.txt is reorganized with external file. You can just import $id folder containing meants.txt instead of full subject folder
+ -ar <filename>, --alt_reorganization <filename> : (Automatically enables -c option) meants.txt is reorganized with external file, inside alternative_reorganization folder. You can just import $id folder containing meants.txt instead of full subject folder
 
  System Requirements:
  - fsl
@@ -37,8 +37,8 @@ question (){
 }
 
 # Default path to HCP data 
-#PATH2DATA="/media/francescozumo/Verbatim"
-PATH2DATA="../Data"
+PATH2DATA="/media/francescozumo/Verbatim"
+#PATH2DATA="../Data"
 
 # will be set true if -i argument is used
 interactive=false
@@ -536,7 +536,7 @@ for subject in "$PATH2DATA"/*; do
 			printf "\nsubject $id : alternative_reorganization\n"
 			
 			# copy ext_reorganization and reorganize.m in working folder
-			cp resources/Schaefer/${ext_reorganization} $PATH2RES/ext_reorganization.txt
+			cp resources/alternative_reorganization/${ext_reorganization} $PATH2RES/ext_reorganization.txt
 			cp resources/reorganize.m $PATH2RES/reorganize.m
 			
 			echo "running reorganize.m to generate alternative reorganization from $ext_reorganization"
