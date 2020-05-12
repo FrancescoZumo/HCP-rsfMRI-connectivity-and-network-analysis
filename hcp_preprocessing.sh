@@ -37,7 +37,7 @@ question (){
 }
 
 # Default path to HCP data 
-PATH2DATA="/media/francescozumo/Verbatim"
+PATH2DATA="/media/francescozumo/Verbatim/test-retest/retest-edo"
 #PATH2DATA="../Data"
 
 # will be set true if -i argument is used
