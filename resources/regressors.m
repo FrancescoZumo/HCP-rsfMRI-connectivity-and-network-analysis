@@ -1,3 +1,5 @@
+% Author: Francesco Zumerle, Universty of Verona
+
 function regressors(volumes)
     %% load 3 files containing Movement Regressors, CSF and WM mean signal  
     Movement_Regressors_1180 = load('Movement_Regressors_1180.txt');

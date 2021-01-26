@@ -13,6 +13,7 @@ usage (){
  -o, --one_subject\t\t: only one subject is processed
  -c, --clustering\t\t: only section 5: clustering will be performed for each subject
  -ar <filename>, --alt_reorganization <filename> : (Automatically enables -c option) meants.txt is reorganized with external file, inside alternative_reorganization folder. You can just import $id folder containing meants.txt instead of full subject folder
+ -nf, --no_filtering\t: filtering is not performed
 
  System Requirements:
  - fsl
@@ -37,8 +38,7 @@ question (){
 }
 
 # Default path to HCP data 
-PATH2DATA="/media/francescozumo/Verbatim/test-retest/retest-edo"
-#PATH2DATA="../Data"
+PATH2DATA="../Data"
 
 # will be set true if -i argument is used
 interactive=false
@@ -59,6 +59,9 @@ flag=true
 
 # if true, only section 5 will be launched for each subject
 clustering_only=false
+
+# if true, filtering is not performed
+no_filtering=false
 
 #if true, section 5 will only apply an external reorganization
 alt_reorganization=false
@@ -97,6 +100,9 @@ while [[ "$1" != "" ]]; do
 		-c | --clustering )
 			clustering_only=true
 			;;
+        -nf | --no_filtering )
+            no_filtering=true
+            ;;
 		-ar | --alt_reorganization )
 			clustering_only=true
 			alt_reorganization=true
@@ -171,6 +177,15 @@ fi
 if [[ "$flag" == true && "$interactive" == true ]]; then
 	read -p "new value: " ans
 	volumes=$ans
+fi
+
+# INTERACTIVE : filtering
+if [[ "$interactive" == true ]]; then
+	question "do you want to skip filtering?"
+fi
+
+if [[ "$flag" == true && "$interactive" == true ]]; then
+	no_filtering=true
 fi
 
 # INTERACTIVE : execute code for only one subject
@@ -398,7 +413,7 @@ for subject in "$PATH2DATA"/*; do
 		question "$id : start 4th section - Filtering?"
 	fi
 
-	if [[ "$flag" == true && "$clustering_only" == false ]]; then
+	if [[ "$flag" == true && "$clustering_only" == false && "$no_filtering" == false ]]; then
 
 		# Implementing Band Pass filter 0.009-0.08Hz
 
@@ -453,6 +468,10 @@ for subject in "$PATH2DATA"/*; do
 
 	if [[ "$flag" == true ]]; then
 
+        if [[ "$no_filtering" == true ]]; then
+            cp $PATH2RES/rfMRI_REST1_LR_${volumes}_reg.nii.gz $PATH2RES/rfMRI_REST1_LR_${volumes}_filtered.nii.gz
+        fi
+
 		# if -ar was used, this section is ignored
 		if [[ "$alt_reorganization" == false ]]; then
 			#registering atlas aparc+aseg from T1w to rfmri with T1w207fmri.mat
@@ -476,7 +495,7 @@ for subject in "$PATH2DATA"/*; do
 			cp resources/label_converter.m $PATH2RES/label_converter.m
 			cp resources/84regions_conversion.csv $PATH2RES/84regions_conversion.csv
 
-			# this matlab script converts current labels with fs_standard.txt labels and removes unused regins
+			# this matlab script converts current labels with fs_standard.txt labels and removes unused regions
 			# open clusters.m for more details
 			printf "\nrunning clusters.m\n"
 			# usage: label_converter(input_name, conversion_table, output_name)
@@ -497,7 +516,6 @@ for subject in "$PATH2DATA"/*; do
 			# regions have been divided in lobes, according to https://surfer.nmr.mgh.harvard.edu/fswiki/CorticalParcellation
 			printf "\nrunning reorganize.m for anatomical reorganization\n"
 			matlab -nodisplay -nosplash -nodesktop -r "cd('$PATH2RES'); reorganize('meants.txt', 'lobes_reorganization.txt', 'meants_lobes.txt');exit" | tail -n +11
-
 
 			# Functional reorganization, according to Schaefer2018
 

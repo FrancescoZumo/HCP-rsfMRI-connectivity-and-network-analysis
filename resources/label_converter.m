@@ -1,3 +1,5 @@
+% Author: Francesco Zumerle, Universty of Verona
+
 function label_converter(input_name, conversion_table, output_name)
     % import atlas in matlab
     % load atlas

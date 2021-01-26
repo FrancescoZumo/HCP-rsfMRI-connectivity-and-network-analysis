@@ -1,5 +1,7 @@
+% Author: Francesco Zumerle, Universty of Verona
+
 function choose_reorganization(input_name, networks_name, reorganization_name)
-    
+   
 %% CHOOSE REORGANIZATION
 
     % load input file

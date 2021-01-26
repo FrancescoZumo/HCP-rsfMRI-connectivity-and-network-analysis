@@ -1,3 +1,5 @@
+% Author: Francesco Zumerle, Universty of Verona
+
 %% SCHAEFER_REORGANIZATION
 % This script generates a functional reorganization of the signal matrix
 % obtained from HCP subjects in resting_state

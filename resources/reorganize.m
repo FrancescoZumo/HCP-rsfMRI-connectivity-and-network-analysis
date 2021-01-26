@@ -1,3 +1,5 @@
+% Author: Francesco Zumerle, Universty of Verona
+
 function reorganize(signals, reorganization, output)
     
     % load files
