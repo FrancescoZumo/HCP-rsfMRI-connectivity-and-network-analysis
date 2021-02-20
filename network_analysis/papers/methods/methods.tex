@@ -1,0 +1,56 @@
+\documentclass[11pt, a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[numbered]{matlab-prettifier}
+\usepackage{graphicx, epstopdf}
+\usepackage{float}
+\usepackage{ dsfont }
+\usepackage{fancyhdr}
+
+
+%opening
+\title{...}
+\author{...}
+%\date{}
+\begin{document}
+
+\maketitle
+
+\section{METHODS}
+For each Functional connectivity metric, two network measures of centrality have been implemented: the Strength and the Betweenness centrality. The former is the weighted variant of the Degree and it is defined for each node as the sum of all neighboring link weights [A].
+\begin{center}
+	Weighted degree of a node i,
+$$k_{i}^{w} = \sum_{j\in n}w_{ij}$$
+\end{center}
+The latter is defined as the fraction of all the shortest paths in the network that pass through a node[A].\begin{center}
+	Betweenness centrality of node $ i $ (e.g., Freeman, 1978)[B],
+$$b_{i} = \frac{1}{(n - 1)(n - 2)}\sum_{h,j\in N, h \neq j,h \neq i,j \neq i}\frac{\rho_{hj}(i)}{\rho_{hj}},$$
+where $\rho_{hj}$ is the number of shortest paths between $ h $ and $ j $, and $\rho_{hj}(i)$ is the number of shortest paths between $ h $ and $ j $ that pass through $ i $
+\end{center}
+Furthermore, the functional integration of the networks has been estimated with the global efficiency (Latora and Marchiori, 2001)[C], defined as the average inverse shortest path length [A]. 
+\begin{center}
+$$E^{w} = \frac{1}{n}\sum_{i \in N} E_{i} = \frac{1}{n}\sum_{i \in N}\frac{\sum_{j \in N, j \neq i}(d_{ij}^{w})^{-1}}{n-1}$$
+where $ E_{i} $ is the efficiency of node $ i $.
+\end{center}
+Moreover, the small world properties of the networks have been investigated with the Small-Worldness (Humphries and Gurney, 2008)[D] and with an alternative version proposed by Muldoon et al. [E].
+\begin{center}
+	Small-Worldness: $$S = \frac{C/C_{rand}}{L/L_{rand}},$$
+where $ C $ and $ C_{rand} $ are the clustering coefficients, and $ L $ and $ L_{rand} $ are
+the characteristic path lengths of the respective tested network and
+a random network.\\
+Small-World propensity:
+$$SWP = 1 - \sqrt{\frac{\Delta_{C}^{2} + \Delta_{L}^{2}}{2}}$$
+The ratios $ \Delta_{C} $ and $ \Delta_{L} $ represent the fractional deviation of the metric ($ C_{obs} $ or $ L_{obs} $) from its respective null model (a lattice or random network).
+\end{center}
+Finally, a normalized version of Strength and Global efficiency has been performed, dividing the original metric with one  obtained from a random network (which preserves weight, degree and strength distributions of the original) and iterating the process 100 times for each subject.
+\section{References}
+[A] Rubinov, M., \& Sporns, O. (2010). Complex network measures of brain connectivity: uses and interpretations. Neuroimage, 52(3), 1059-1069.
+
+[B] Freeman, L. C. (1978). Centrality in social networks conceptual clarification. Social networks, 1(3), 215-239.
+
+[C] Latora, V., \& Marchiori, M. (2001). Efficient behavior of small-world networks. Physical review letters, 87(19), 198701.
+
+[D] Humphries, M. D., \& Gurney, K. (2008). Network ‘small-world-ness’: a quantitative method for determining canonical network equivalence. PloS one, 3(4), e0002051.
+
+[E] Muldoon, S. F., Bridgeford, E. W., \& Bassett, D. S. (2016). Small-world propensity and weighted brain networks. Scientific reports, 6, 22057.
+
+\end{document}
