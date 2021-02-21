@@ -62,5 +62,10 @@ for m = 1:numel(ws_folders)
         k = k + 1;
     end
 end
+
+% Salviamo
+path_save = strcat(pwd, '/functional_connectivity/connectivity_measures.mat');
+save(path_save, 'conn_measures');
+
 end
 
