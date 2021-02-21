@@ -1,4 +1,4 @@
-% Author: Francesco Zumerle, Universty of Verona
+% Author: Francesco Zumerle, University of Verona
 
 % notes (to be removed later)
 %
