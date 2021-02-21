@@ -1,6 +1,7 @@
 %% Time-Series
 
 load('subjects.mat');
+load('connectivity_measures.mat');
 
 %% Computazione
 

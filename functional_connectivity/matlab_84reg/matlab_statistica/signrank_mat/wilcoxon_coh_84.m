@@ -14,12 +14,10 @@ w_aux = zeros(n_soggetti,2);
 for i = 1:voxels
     for k = 1:i
         for m = 1:n_soggetti
-            % Carico soggetto s1200
-            percorso = strcat('workspace_84reg_', s_volumes, '_norm/1200/ws_',lista_soggetti(m,:),'_norm.mat');
-            load(percorso);
+           % Carico soggetto s1200
+            coherence_matrix_s1200_norm = conn_measures.s_1200{m}.coherence_matrix_s1200_norm;
             % Carico soggetto sretest che uso per overall mean
-            percorso = strcat('workspace_84reg_', s_volumes, '_norm/retest/ws_',lista_soggetti(m,:),'_norm.mat');
-            load(percorso);
+            coherence_matrix_sretest_norm = conn_measures.s_retest{m}.coherence_matrix_sretest_norm;
             if i == k
                 w_aux(m,1) = 1;
                 w_aux(m,2) = 1;

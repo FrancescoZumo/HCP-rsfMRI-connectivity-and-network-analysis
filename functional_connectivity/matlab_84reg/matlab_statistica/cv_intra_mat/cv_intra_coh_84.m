@@ -14,12 +14,10 @@ sigws_array = zeros(1,n_soggetti);
 for i = 1:voxels
     for k = 1:i
         for m = 1:n_soggetti
-            % Carico soggetto s1200
-            percorso = strcat('workspace_84reg_', s_volumes, '_norm/1200/ws_',lista_soggetti(m,:),'_norm.mat');
-            load(percorso);
+             % Carico soggetto s1200
+            coherence_matrix_s1200_norm = conn_measures.s_1200{m}.coherence_matrix_s1200_norm;
             % Carico soggetto sretest che uso per overall mean
-            percorso = strcat('workspace_84reg_', s_volumes, '_norm/retest/ws_',lista_soggetti(m,:),'_norm.mat');
-            load(percorso);
+            coherence_matrix_sretest_norm = conn_measures.s_retest{m}.coherence_matrix_sretest_norm;
             % Vettore che serve per l'overall mean
             media_CVintra_array(1,m) = mean([coherence_matrix_s1200_norm(i,k), coherence_matrix_sretest_norm(i,k)]);
             % Calcolo per varianza inter-soggetto (sigma_ws)
